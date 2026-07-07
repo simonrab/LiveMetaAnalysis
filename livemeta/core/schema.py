@@ -166,3 +166,41 @@ class ReviewResult(BaseModel):
     validations: list[ValidationResult] = Field(default_factory=list)
     pool: PoolResult | None = None
     summary: str = ""
+
+
+class TrialCandidate(BaseModel):
+    """A trial surfaced by search, before extraction."""
+
+    nct_id: str
+    title: str
+    source: str = "clinicaltrials.gov"
+
+
+class ReviewDiff(BaseModel):
+    """How a re-run compares to the previous snapshot of a question.
+
+    The load-bearing signal for the living layer: did adding a trial move the
+    estimate, and — more importantly — did it change the conclusion (flip the
+    statistical significance or the direction of effect)?
+    """
+
+    question_id: str
+    previous_version: int
+    current_version: int
+
+    estimate_prev: float | None = None
+    estimate_curr: float | None = None
+    delta: float | None = None  # estimate_curr - estimate_prev, natural scale
+
+    ci_prev: tuple[float, float] | None = None
+    ci_curr: tuple[float, float] | None = None
+
+    k_prev: int
+    k_curr: int
+    added_trials: list[str] = Field(default_factory=list)
+
+    significance_changed: bool = False
+    direction_changed: bool = False
+    conclusion_changed: bool = False
+
+    notes: list[str] = Field(default_factory=list)

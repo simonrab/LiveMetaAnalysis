@@ -35,12 +35,28 @@ def interpret_i2(i2: float) -> str:
     return "considerable"
 
 
+def pool_direction(pool: PoolResult) -> str:
+    """Direction of effect relative to no effect (ratio = 1)."""
+    if pool.estimate < 1:
+        return "reduced"
+    if pool.estimate > 1:
+        return "increased"
+    return "unchanged"
+
+
+def pool_significant(pool: PoolResult) -> bool:
+    """Whether the confidence interval excludes no effect (does not cross 1)."""
+    return pool.ci_high < 1 or pool.ci_low > 1
+
+
 def summarize(question: Question, pool: PoolResult) -> str:
     """A plain-language, clinician-facing conclusion."""
     est, lo, hi = pool.estimate, pool.ci_low, pool.ci_high
     measure = pool.measure.value
-    direction = "reduced" if est < 1 else ("increased" if est > 1 else "did not change")
-    significant = hi < 1 or lo > 1
+    direction = {"reduced": "reduced", "increased": "increased", "unchanged": "did not change"}[
+        pool_direction(pool)
+    ]
+    significant = pool_significant(pool)
     strength = "a statistically significant" if significant else "no statistically significant"
     interp = interpret_i2(pool.i2)
     ci_kind = "Hartung-Knapp" if pool.ci_method.value == "hksj" else "Wald"
