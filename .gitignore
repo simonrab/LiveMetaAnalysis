@@ -14,3 +14,6 @@ __pycache__/
 # Environment / secrets
 .env
 .env.local
+
+# Living-review snapshot store (Slice 2 stand-in for SQLite)
+.livemeta_data/
