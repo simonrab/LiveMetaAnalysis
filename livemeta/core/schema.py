@@ -15,6 +15,24 @@ class EffectMeasure(str, Enum):
     RR = "RR"  # risk ratio
     OR = "OR"  # odds ratio
     HR = "HR"  # hazard ratio (time-to-event, generic inverse-variance)
+    MD = "MD"  # mean difference (continuous, same scale)
+    SMD = "SMD"  # standardized mean difference (continuous, differing scales)
+
+
+# Ratio measures pool on the log scale; MD/SMD are already on the natural scale.
+RATIO_MEASURES = {EffectMeasure.RR, EffectMeasure.OR, EffectMeasure.HR}
+
+
+class PoolMethod(str, Enum):
+    """How the per-study effects were combined.
+
+    Inverse-variance is the default two-stage approach; Peto and Mantel-Haenszel
+    are the rare-event alternatives Cochrane recommends when events are sparse.
+    """
+
+    IV = "inverse_variance"
+    PETO = "peto"
+    MANTEL_HAENSZEL = "mantel_haenszel"
 
 
 class CIMethod(str, Enum):
@@ -44,6 +62,22 @@ class BinaryEffect(BaseModel):
     label: str
     treatment: BinaryArm
     control: BinaryArm
+    provenance: list[Provenance] = Field(default_factory=list)
+
+
+class ContinuousArm(BaseModel):
+    mean: float
+    sd: float
+    n: int
+
+
+class ContinuousEffect(BaseModel):
+    """A continuous outcome for one trial: mean/SD/n per arm, with provenance."""
+
+    study_id: str
+    label: str
+    treatment: ContinuousArm
+    control: ContinuousArm
     provenance: list[Provenance] = Field(default_factory=list)
 
 
@@ -121,6 +155,86 @@ class ReviewDecision(BaseModel):
     timestamp: str | None = None
 
 
+class RobJudgment(str, Enum):
+    """RoB 2 per-domain and overall judgment."""
+
+    LOW = "low"  # +
+    SOME_CONCERNS = "some_concerns"  # ?
+    HIGH = "high"  # -
+    PENDING = "pending"  # not yet assessed (e.g. no LLM key) — never fabricated
+
+
+class RobDomain(BaseModel):
+    """One RoB 2 domain: Claude's judgment with the source quote it rests on."""
+
+    key: str  # D1..D5
+    name: str
+    judgment: RobJudgment = RobJudgment.PENDING
+    rationale: str = ""
+    source_quote: Provenance | None = None
+    confirmed: bool = False  # a human reviewer signed off on this domain
+
+
+class RobAssessment(BaseModel):
+    """A trial's five-domain RoB 2 appraisal with a deterministic overall roll-up."""
+
+    study_id: str
+    label: str
+    domains: list[RobDomain] = Field(default_factory=list)
+    overall: RobJudgment = RobJudgment.PENDING
+    confirmed: bool = False  # all domains signed off
+
+
+class RobDecision(BaseModel):
+    """A human reviewer's sign-off ("Verify") on one RoB 2 domain."""
+
+    study_id: str
+    domain_key: str
+    decision: str = "confirmed"
+    reason: str | None = None
+    timestamp: str | None = None
+
+
+class GradeRating(str, Enum):
+    HIGH = "high"
+    MODERATE = "moderate"
+    LOW = "low"
+    VERY_LOW = "very_low"
+
+
+class GradeDomain(BaseModel):
+    """One GRADE certainty domain and how far it downgrades the rating."""
+
+    name: str  # risk_of_bias | inconsistency | indirectness | imprecision | publication_bias
+    serious: str = "not_serious"  # not_serious | serious | very_serious
+    downgrade: int = 0  # 0, -1, or -2
+    rationale: str = ""
+    by_claude: bool = False  # True for the judged domains (indirectness, publication bias)
+
+
+class GradeAssessment(BaseModel):
+    """Certainty of evidence for one outcome, with a Summary-of-Findings line."""
+
+    outcome: str
+    starting_level: GradeRating = GradeRating.HIGH
+    certainty: GradeRating = GradeRating.HIGH
+    domains: list[GradeDomain] = Field(default_factory=list)
+    sof_line: str = ""
+    footnotes: list[str] = Field(default_factory=list)
+
+
+class LeaveOneOutRow(BaseModel):
+    """One leave-one-out sensitivity row: the pool with a single study omitted."""
+
+    omitted_study_id: str
+    omitted_label: str
+    k: int
+    estimate: float
+    ci_low: float
+    ci_high: float
+    i2: float
+
+
 class StudyResult(BaseModel):
     """Per-study computed effect, for the forest plot rows."""
 
@@ -140,6 +254,7 @@ class PoolResult(BaseModel):
     measure: EffectMeasure
     model: str = "random"
     method: str = "REML"
+    pool_method: PoolMethod = PoolMethod.IV
     engine: str  # "metafor" | "python"
     k: int
 
@@ -181,6 +296,9 @@ class ReviewResult(BaseModel):
     validations: list[ValidationResult] = Field(default_factory=list)
     pool: PoolResult | None = None
     summary: str = ""
+    rob: list[RobAssessment] = Field(default_factory=list)
+    grade: GradeAssessment | None = None
+    sensitivity: list[LeaveOneOutRow] = Field(default_factory=list)
 
 
 class TrialCandidate(BaseModel):

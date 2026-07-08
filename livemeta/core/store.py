@@ -14,7 +14,7 @@ import os
 import re
 from pathlib import Path
 
-from .schema import ReviewDecision, ReviewResult
+from .schema import ReviewDecision, ReviewResult, RobDecision
 
 _DEFAULT_DIR = ".livemeta_data"
 _SAFE = re.compile(r"[^A-Za-z0-9_-]+")
@@ -32,10 +32,16 @@ class SnapshotStore:
     def _load_file(self, question_id: str) -> dict:
         path = self._path(question_id)
         if not path.exists():
-            return {"question_id": question_id, "snapshots": [], "decisions": []}
+            return {
+                "question_id": question_id,
+                "snapshots": [],
+                "decisions": [],
+                "rob_decisions": [],
+            }
         data = json.loads(path.read_text())
         data.setdefault("snapshots", [])
         data.setdefault("decisions", [])
+        data.setdefault("rob_decisions", [])
         return data
 
     def _write_file(self, question_id: str, data: dict) -> None:
@@ -86,4 +92,24 @@ class SnapshotStore:
         return [
             ReviewDecision.model_validate(d)
             for d in self._load_file(question_id)["decisions"]
+        ]
+
+    def save_rob_decision(self, question_id: str, decision: RobDecision) -> None:
+        """Record a human RoB 2 domain sign-off; latest per (study, domain) wins."""
+        data = self._load_file(question_id)
+        data["rob_decisions"] = [
+            d
+            for d in data["rob_decisions"]
+            if not (
+                d.get("study_id") == decision.study_id
+                and d.get("domain_key") == decision.domain_key
+            )
+        ]
+        data["rob_decisions"].append(decision.model_dump(mode="json"))
+        self._write_file(question_id, data)
+
+    def load_rob_decisions(self, question_id: str) -> list[RobDecision]:
+        return [
+            RobDecision.model_validate(d)
+            for d in self._load_file(question_id)["rob_decisions"]
         ]

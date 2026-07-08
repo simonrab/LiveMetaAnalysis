@@ -13,15 +13,20 @@ from collections.abc import Sequence
 
 from .schema import (
     EffectMeasure,
+    GradeAssessment,
+    LeaveOneOutRow,
     PipelineEvent,
     PoolResult,
     Question,
     ReviewDecision,
     ReviewResult,
+    RobAssessment,
 )
 from .sources.clinicaltrials import ClinicalTrialsClient
 from .stats import engine as stats_engine
+from .stats import sensitivity as sensitivity_mod
 from . import extract as extract_mod
+from . import rob as rob_mod
 from . import validate as validate_mod
 
 FetchStudy = Callable[[str], dict]
@@ -71,8 +76,34 @@ def summarize(question: Question, pool: PoolResult) -> str:
     )
 
 
+def _appraise(
+    question: Question,
+    studies_by_id: dict[str, dict],
+    points: Sequence,
+    pool: PoolResult,
+    llm_client=None,
+) -> tuple[list[RobAssessment], GradeAssessment, list[LeaveOneOutRow]]:
+    """Run the three appraisal steps that follow a successful pool.
+
+    RoB 2 per trial (Claude judges; PENDING with no key), a leave-one-out
+    sensitivity view, and a GRADE certainty rating for the outcome. `grade` is
+    imported here to avoid a module import cycle (grade reuses this module).
+    """
+    from . import grade as grade_mod
+
+    rob = [
+        rob_mod.assess_rob(study, llm_client=llm_client)
+        for study in studies_by_id.values()
+    ]
+    loo = sensitivity_mod.leave_one_out(points, measure=question.measure)
+    grade = grade_mod.grade_outcome(question, pool, rob, llm_client=llm_client)
+    return rob, grade, loo
+
+
 def run_review(
-    question: Question, fetch_study: FetchStudy | None = None
+    question: Question,
+    fetch_study: FetchStudy | None = None,
+    llm_client=None,
 ) -> Iterator[PipelineEvent]:
     fetch_study = fetch_study or ClinicalTrialsClient().fetch_study
 
@@ -88,8 +119,10 @@ def run_review(
     )
 
     extractions = []
+    studies_by_id: dict[str, dict] = {}
     for nct in question.trial_ids:
         study = fetch_study(nct)
+        studies_by_id[nct] = study
         ext = extract_mod.extract_hr(study)
         extractions.append(ext)
         msg = (
@@ -128,6 +161,30 @@ def run_review(
         f"({pool.ci_low:.2f}-{pool.ci_high:.2f}).",
         data=pool.model_dump(),
     )
+
+    rob, grade, sensitivity = _appraise(
+        question, studies_by_id, points, pool, llm_client=llm_client
+    )
+    n_pending = sum(1 for r in rob if r.overall.value == "pending")
+    yield PipelineEvent(
+        stage="appraise",
+        message=(
+            f"Risk of bias assessed for {len(rob)} trials"
+            + (f" ({n_pending} pending — no model key)." if n_pending else ".")
+        ),
+        data={"rob": [r.model_dump() for r in rob]},
+    )
+    yield PipelineEvent(
+        stage="sensitivity",
+        message=f"Leave-one-out sensitivity across {len(sensitivity)} trials.",
+        data={"sensitivity": [r.model_dump() for r in sensitivity]},
+    )
+    yield PipelineEvent(
+        stage="grade",
+        message=f"GRADE certainty: {grade.certainty.value.replace('_', ' ')}.",
+        data={"grade": grade.model_dump()},
+    )
+
     yield PipelineEvent(
         stage="done",
         message=summary,
@@ -137,6 +194,9 @@ def run_review(
             validations=validations,
             pool=pool,
             summary=summary,
+            rob=rob,
+            grade=grade,
+            sensitivity=sensitivity,
         ).model_dump(),
     )
 
@@ -194,10 +254,24 @@ def repool_with_decisions(
         else "Too few valid trials to pool — abstaining."
     )
 
+    # RoB judgments are per-trial and unaffected by a re-pool, so carry them over;
+    # GRADE and the leave-one-out view depend on the pool, so recompute them.
+    rob = [r.model_copy(deep=True) for r in result.rob]
+    grade = result.grade
+    loo: list[LeaveOneOutRow] = []
+    if pool is not None:
+        from . import grade as grade_mod
+
+        grade = grade_mod.grade_outcome(result.question, pool, rob)
+        loo = sensitivity_mod.leave_one_out(points, measure=result.question.measure)
+
     return ReviewResult(
         question=result.question,
         extractions=extractions,
         validations=validations,
         pool=pool,
         summary=summary,
+        rob=rob,
+        grade=grade,
+        sensitivity=loo,
     )

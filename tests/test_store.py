@@ -4,7 +4,7 @@ Minimal JSON store standing in for Slice 5's SQLite; the version list is the
 audit-trail history.
 """
 
-from livemeta.core.schema import PICO, Question, ReviewDecision, ReviewResult
+from livemeta.core.schema import PICO, Question, ReviewDecision, ReviewResult, RobDecision
 from livemeta.core.store import SnapshotStore
 
 
@@ -70,4 +70,26 @@ def test_decisions_round_trip_and_default_empty(tmp_path):
     assert by_id["NCT01"] == "confirmed"
 
     # Decisions live alongside snapshots without clobbering the version history.
+    assert store.list_versions("q-demo") == [1]
+
+
+def test_rob_decisions_round_trip_latest_per_domain_wins(tmp_path):
+    store = SnapshotStore(tmp_path)
+    assert store.load_rob_decisions("q-demo") == []
+
+    store.save_snapshot(_review("first"))
+    store.save_rob_decision("q-demo", RobDecision(study_id="NCT01", domain_key="D1"))
+    store.save_rob_decision("q-demo", RobDecision(study_id="NCT01", domain_key="D2"))
+    store.save_rob_decision(
+        "q-demo", RobDecision(study_id="NCT01", domain_key="D1", reason="re-checked")
+    )
+
+    decisions = store.load_rob_decisions("q-demo")
+    # Two distinct (study, domain) sign-offs; the D1 re-check superseded the first.
+    keys = {(d.study_id, d.domain_key) for d in decisions}
+    assert keys == {("NCT01", "D1"), ("NCT01", "D2")}
+    d1 = next(d for d in decisions if d.domain_key == "D1")
+    assert d1.reason == "re-checked"
+    # RoB sign-offs don't disturb the trial decision list or the version history.
+    assert store.load_decisions("q-demo") == []
     assert store.list_versions("q-demo") == [1]

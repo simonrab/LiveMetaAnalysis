@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 const linkBase =
   "flex items-center gap-3 rounded-sm px-3 py-2 text-[12px] font-semibold uppercase tracking-wider transition-colors";
@@ -14,9 +14,23 @@ const primary = [
   { to: "/ask", label: "Ask", end: false },
 ];
 
-const footer = ["Risk of Bias", "GRADE", "Audit Trail", "Export", "Settings"];
+// The current review id, if we're inside a /reviews/:id/... route — so the
+// analysis links can target it.
+function useCurrentReviewId(): string | null {
+  const { pathname } = useLocation();
+  return pathname.match(/^\/reviews\/([^/]+)/)?.[1] ?? null;
+}
+
+const disabledFooter = ["Audit Trail", "Export", "Settings"];
 
 export function Sidebar() {
+  const reviewId = useCurrentReviewId();
+  const analysis = reviewId
+    ? [
+        { to: `/reviews/${reviewId}/rob`, label: "Risk of Bias" },
+        { to: `/reviews/${reviewId}/grade`, label: "GRADE" },
+      ]
+    : [];
   return (
     <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-hairline-light bg-surface-container-low py-6 md:flex">
       <div className="mb-8 flex items-center gap-3 px-5">
@@ -42,7 +56,17 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-auto space-y-1 border-t border-hairline-light px-3 pt-4">
-        {footer.map((label) => (
+        {analysis.length > 0 && (
+          <div className="mb-1 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-outline">
+            Analysis
+          </div>
+        )}
+        {analysis.map((l) => (
+          <NavLink key={l.to} to={l.to} className={({ isActive }) => item(isActive)}>
+            {l.label}
+          </NavLink>
+        ))}
+        {disabledFooter.map((label) => (
           <span
             key={label}
             className="flex cursor-not-allowed items-center gap-3 rounded-sm px-3 py-1.5 text-[12px] font-semibold uppercase tracking-wider text-outline-variant"

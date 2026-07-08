@@ -20,13 +20,33 @@ export function ReportView({ result }: { result: ReviewResult }) {
       </p>
     );
   }
-  const { pool, summary, extractions } = result;
+  const { pool, summary, extractions, grade, sensitivity } = result;
+  const significant = pool.ci_high < 1 || pool.ci_low > 1;
 
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted-light">
-        Pooled answer
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted-light">
+          Pooled answer
+        </p>
+        {grade && (
+          <span className="inline-flex items-center gap-2 rounded-full border border-hairline-light px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-light">
+            <span className="flex gap-0.5">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-2 w-2 rounded-full ${
+                    i < { high: 4, moderate: 3, low: 2, very_low: 1 }[grade.certainty]
+                      ? "bg-secondary"
+                      : "bg-surface-container-highest"
+                  }`}
+                />
+              ))}
+            </span>
+            {grade.certainty.replace("_", " ")} certainty
+          </span>
+        )}
+      </div>
 
       <div className="mt-3 flex items-baseline gap-4">
         <span className="font-mono text-[40px] font-medium tracking-tight text-ink-light">
@@ -78,6 +98,62 @@ export function ReportView({ result }: { result: ReviewResult }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {sensitivity.length > 0 && (
+        <section className="mt-8 rounded-md border border-hairline-light bg-card-light p-6">
+          <h2 className="mb-1 text-[13px] font-medium text-ink-light">
+            Leave-one-out sensitivity
+          </h2>
+          <p className="mb-4 text-[12px] text-ink-muted-light">
+            Re-pooling with each trial removed — does the answer rest on any single
+            trial?
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[520px] border-collapse text-left">
+              <thead>
+                <tr className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted-light">
+                  <th className="pb-2 pr-4">Omitted trial</th>
+                  <th className="pb-2 pr-4 text-right">{pool.measure} (95% CI)</th>
+                  <th className="pb-2 pr-4 text-right">I²</th>
+                  <th className="pb-2 text-right">Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sensitivity.map((r) => {
+                  // Highlight rows whose omission flips the significance verdict.
+                  const rowSig = r.ci_high < 1 || r.ci_low > 1;
+                  const flips = rowSig !== significant;
+                  return (
+                    <tr
+                      key={r.omitted_study_id}
+                      className="border-t border-hairline-light"
+                    >
+                      <td className="py-2 pr-4 text-[13px] text-ink-light">
+                        − {r.omitted_label}
+                      </td>
+                      <td className="py-2 pr-4 text-right font-mono text-[13px] text-ink-light">
+                        {r.estimate.toFixed(2)} [{r.ci_low.toFixed(2)}, {r.ci_high.toFixed(2)}]
+                      </td>
+                      <td className="py-2 pr-4 text-right font-mono text-[12px] text-ink-muted-light">
+                        {r.i2.toFixed(0)}%
+                      </td>
+                      <td className="py-2 text-right">
+                        {flips ? (
+                          <span className="rounded-full border border-[#fde68a] bg-[#fef3c7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#b45309]">
+                            Conclusion flips
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-ink-muted-light">stable</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       <section className="mt-10">

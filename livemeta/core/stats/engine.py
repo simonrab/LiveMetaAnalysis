@@ -17,6 +17,7 @@ import os
 from collections.abc import Sequence
 
 from ..schema import (
+    RATIO_MEASURES,
     BinaryEffect,
     CIMethod,
     EffectMeasure,
@@ -27,6 +28,7 @@ from ..schema import (
 from . import escalc
 from . import fallback as _python
 from . import metafor as _metafor
+from . import rare_event as _rare
 
 
 def choose_ci_method(tau2: float, k: int) -> CIMethod:
@@ -56,6 +58,12 @@ def pool(
     if len(studies) < 2:
         raise ValueError("pooling requires at least two studies")
 
+    # Rare-event route: sparse 2x2 tables break inverse-variance, so pool them
+    # with Peto rather than raising on the zero cell (Cochrane Handbook 10.4.4).
+    binary = [s for s in studies if isinstance(s, BinaryEffect)]
+    if measure in RATIO_MEASURES and len(binary) == len(studies) and _rare.is_rare(binary):
+        return _rare.pool_peto(binary, measure=measure)
+
     points = [
         s if isinstance(s, EffectPoint) else escalc.binary_point(s, measure)
         for s in studies
@@ -77,7 +85,8 @@ def _build_result(fit: dict, *, measure: EffectMeasure, method: str, engine: str
         lb_log, ub_log, se_log = fit["wald_lb_log"], fit["wald_ub_log"], fit["se_wald_log"]
 
     est_log = fit["est_log"]
-    to_natural = math.exp  # ratio measures pool on the log scale
+    # Ratio measures pool on the log scale (exp back); MD/SMD are already natural.
+    to_natural = math.exp if measure in RATIO_MEASURES else (lambda x: x)
 
     studies_out = [
         StudyResult(

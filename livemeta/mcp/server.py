@@ -21,25 +21,31 @@ from mcp.server.fastmcp import FastMCP
 
 from ..core import demo
 from ..core import extract as extract_mod
+from ..core import grade as grade_mod
 from ..core import llm as llm_mod
+from ..core import rob as rob_mod
 from ..core import search as search_mod
 from ..core import validate as validate_mod
 from ..core.diff import diff_reviews
 from ..core.pipeline import repool_with_decisions, run_review_collect
 from ..core.schema import (
     EffectMeasure,
+    GradeAssessment,
+    LeaveOneOutRow,
     PICO,
     PoolResult,
     Question,
     ReviewDecision,
     ReviewDiff,
     ReviewResult,
+    RobAssessment,
     TrialCandidate,
     TrialExtraction,
     ValidationResult,
 )
 from ..core.sources.clinicaltrials import ClinicalTrialsClient
 from ..core.stats import engine as stats_engine
+from ..core.stats import sensitivity as sensitivity_mod
 from ..core.store import SnapshotStore
 
 mcp = FastMCP("livemeta")
@@ -175,6 +181,43 @@ def record_decision(
     repooled = repool_with_decisions(latest, store.load_decisions(question_id))
     store.save_snapshot(repooled)
     return repooled
+
+
+@mcp.tool()
+def assess_rob(trial_id: str) -> RobAssessment:
+    """Appraise one trial's risk of bias (RoB 2) across the five domains.
+
+    Claude judges each domain with a source quote; the overall judgment is rolled
+    up deterministically. Returns a PENDING assessment (never fabricated) when no
+    model key is configured.
+    """
+    study = get_client().fetch_study(trial_id)
+    return rob_mod.assess_rob(study)
+
+
+@mcp.tool()
+def leave_one_out(question_id: str) -> list[LeaveOneOutRow]:
+    """Leave-one-out sensitivity for a saved review: re-pool omitting each trial."""
+    latest = get_store().load_latest(question_id)
+    if latest is None:
+        raise ValueError(
+            f"No existing review for question_id {question_id!r}; run `run_review` first."
+        )
+    validations = validate_mod.validate_ratio(latest.extractions)
+    passed = {v.study_id for v in validations if v.passed}
+    points = [e.point for e in latest.extractions if e.study_id in passed and e.point]
+    return sensitivity_mod.leave_one_out(points, measure=latest.question.measure)
+
+
+@mcp.tool()
+def grade_outcome(question_id: str) -> GradeAssessment:
+    """Rate GRADE certainty for a saved review's outcome (uses its pool + RoB)."""
+    latest = get_store().load_latest(question_id)
+    if latest is None or latest.pool is None:
+        raise ValueError(
+            f"No pooled review for question_id {question_id!r}; run `run_review` first."
+        )
+    return grade_mod.grade_outcome(latest.question, latest.pool, latest.rob)
 
 
 @mcp.tool()

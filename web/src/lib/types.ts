@@ -22,6 +22,7 @@ export interface PoolResult {
   measure: string;
   model: string;
   method: string;
+  pool_method: string;
   engine: string;
   k: number;
   estimate: number;
@@ -58,6 +59,54 @@ export interface ReviewDecision {
   decision: "confirmed" | "flagged";
   reason?: string | null;
   timestamp?: string | null;
+}
+
+export type RobJudgment = "low" | "some_concerns" | "high" | "pending";
+
+export interface RobDomain {
+  key: string;
+  name: string;
+  judgment: RobJudgment;
+  rationale: string;
+  source_quote: Provenance | null;
+  confirmed: boolean;
+}
+
+export interface RobAssessment {
+  study_id: string;
+  label: string;
+  domains: RobDomain[];
+  overall: RobJudgment;
+  confirmed: boolean;
+}
+
+export type GradeRating = "high" | "moderate" | "low" | "very_low";
+
+export interface GradeDomain {
+  name: string;
+  serious: "not_serious" | "serious" | "very_serious";
+  downgrade: number;
+  rationale: string;
+  by_claude: boolean;
+}
+
+export interface GradeAssessment {
+  outcome: string;
+  starting_level: GradeRating;
+  certainty: GradeRating;
+  domains: GradeDomain[];
+  sof_line: string;
+  footnotes: string[];
+}
+
+export interface LeaveOneOutRow {
+  omitted_study_id: string;
+  omitted_label: string;
+  k: number;
+  estimate: number;
+  ci_low: number;
+  ci_high: number;
+  i2: number;
 }
 
 export interface ReviewSummary {
@@ -99,6 +148,9 @@ export interface ReviewResult {
   validations: ValidationResult[];
   pool: PoolResult | null;
   summary: string;
+  rob: RobAssessment[];
+  grade: GradeAssessment | null;
+  sensitivity: LeaveOneOutRow[];
 }
 
 export interface PipelineEvent {

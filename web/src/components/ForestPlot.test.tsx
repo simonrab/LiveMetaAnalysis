@@ -7,6 +7,7 @@ const pool: PoolResult = {
   measure: "HR",
   model: "random",
   method: "REML",
+  pool_method: "inverse_variance",
   engine: "python",
   k: 2,
   estimate: 0.86,
