@@ -86,6 +86,7 @@ export const reviewFixture: ReviewResult = {
     measure: "HR",
     model: "random",
     method: "REML",
+    pool_method: "inverse_variance",
     engine: "python",
     k: 2,
     estimate: 0.86,
@@ -108,6 +109,55 @@ export const reviewFixture: ReviewResult = {
   },
   summary:
     "Pooling 2 trials, GLP-1 receptor agonist reduced 3-point MACE versus Placebo, with a statistically significant effect: HR 0.86 (95% CI 0.79-0.94, Hartung-Knapp).",
+  rob: [
+    {
+      study_id: "NCT01179048",
+      label: "LEADER",
+      overall: "some_concerns",
+      confirmed: false,
+      domains: [
+        { key: "D1", name: "Randomization process", judgment: "low", rationale: "Central randomization with concealed allocation.", source_quote: { trial_id: "NCT01179048", snippet: "Participants were randomly assigned via a centralized, computer-generated schedule.", source_url: null, field: "rob.D1" }, confirmed: false },
+        { key: "D2", name: "Deviations from intended interventions", judgment: "some_concerns", rationale: "Minor protocol deviations, ITT retained.", source_quote: { trial_id: "NCT01179048", snippet: "Three patients received non-protocol therapy; retained in ITT.", source_url: null, field: "rob.D2" }, confirmed: false },
+        { key: "D3", name: "Missing outcome data", judgment: "low", rationale: "Attrition balanced and low.", source_quote: { trial_id: "NCT01179048", snippet: "Loss to follow-up was 4.2% overall.", source_url: null, field: "rob.D3" }, confirmed: false },
+        { key: "D4", name: "Measurement of the outcome", judgment: "low", rationale: "Blinded adjudication of the outcome.", source_quote: { trial_id: "NCT01179048", snippet: "Events adjudicated by a masked committee.", source_url: null, field: "rob.D4" }, confirmed: false },
+        { key: "D5", name: "Selection of the reported result", judgment: "low", rationale: "Pre-registered primary endpoint.", source_quote: { trial_id: "NCT01179048", snippet: "Analysis followed the pre-specified protocol.", source_url: null, field: "rob.D5" }, confirmed: false },
+      ],
+    },
+    {
+      study_id: "NCT01720446",
+      label: "SUSTAIN-6",
+      overall: "low",
+      confirmed: false,
+      domains: [
+        { key: "D1", name: "Randomization process", judgment: "low", rationale: "Adequate randomization.", source_quote: { trial_id: "NCT01720446", snippet: "Randomized 1:1 with concealed allocation.", source_url: null, field: "rob.D1" }, confirmed: false },
+        { key: "D2", name: "Deviations from intended interventions", judgment: "low", rationale: "ITT analysis.", source_quote: { trial_id: "NCT01720446", snippet: "Primary analysis was intention-to-treat.", source_url: null, field: "rob.D2" }, confirmed: false },
+        { key: "D3", name: "Missing outcome data", judgment: "low", rationale: "Complete follow-up.", source_quote: { trial_id: "NCT01720446", snippet: "Vital status known for 99.6%.", source_url: null, field: "rob.D3" }, confirmed: false },
+        { key: "D4", name: "Measurement of the outcome", judgment: "low", rationale: "Blinded adjudication.", source_quote: { trial_id: "NCT01720446", snippet: "Independent adjudication committee.", source_url: null, field: "rob.D4" }, confirmed: false },
+        { key: "D5", name: "Selection of the reported result", judgment: "low", rationale: "Pre-specified endpoint.", source_quote: { trial_id: "NCT01720446", snippet: "Reported the pre-registered primary outcome.", source_url: null, field: "rob.D5" }, confirmed: false },
+      ],
+    },
+  ],
+  grade: {
+    outcome: "3-point MACE",
+    starting_level: "high",
+    certainty: "moderate",
+    sof_line:
+      "GLP-1 receptor agonist reduced 3-point MACE (HR 0.86, 95% CI 0.79-0.94; 2 trials); moderate-certainty evidence.",
+    domains: [
+      { name: "risk_of_bias", serious: "not_serious", downgrade: 0, rationale: "Included trials are at low risk of bias across RoB 2 domains.", by_claude: false },
+      { name: "inconsistency", serious: "not_serious", downgrade: 0, rationale: "Heterogeneity was moderate (I² = 45%). Estimates are consistent.", by_claude: false },
+      { name: "indirectness", serious: "serious", downgrade: -1, rationale: "Baseline NYHA class differs from the target population.", by_claude: true },
+      { name: "imprecision", serious: "not_serious", downgrade: 0, rationale: "The 95% CI excludes no effect and is reasonably narrow.", by_claude: false },
+      { name: "publication_bias", serious: "not_serious", downgrade: 0, rationale: "Funnel plot symmetric.", by_claude: true },
+    ],
+    footnotes: [
+      "Downgraded for indirectness: Baseline NYHA class differs from the target population.",
+    ],
+  },
+  sensitivity: [
+    { omitted_study_id: "NCT01179048", omitted_label: "LEADER", k: 1, estimate: 0.82, ci_low: 0.7, ci_high: 0.96, i2: 0 },
+    { omitted_study_id: "NCT01720446", omitted_label: "SUSTAIN-6", k: 1, estimate: 0.88, ci_low: 0.8, ci_high: 0.97, i2: 0 },
+  ],
 };
 
 export const summariesFixture: ReviewSummary[] = [

@@ -40,3 +40,16 @@ export async function postDecision(
     })
   );
 }
+
+export async function postRobDecision(
+  id: string,
+  decision: { study_id: string; domain_key: string; reason?: string | null }
+): Promise<ReviewResult> {
+  return json<ReviewResult>(
+    await fetch(`/api/reviews/${encodeURIComponent(id)}/rob/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(decision),
+    })
+  );
+}

@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import math
 
-from ..schema import BinaryEffect, EffectMeasure, EffectPoint, Provenance
+from ..schema import (
+    BinaryEffect,
+    ContinuousEffect,
+    EffectMeasure,
+    EffectPoint,
+    Provenance,
+)
 
 _Z = 1.959963984540054  # qnorm(0.975)
 
@@ -36,6 +42,42 @@ def binary_point(effect: BinaryEffect, measure: EffectMeasure) -> EffectPoint:
         vi = 1 / a + 1 / b + 1 / c + 1 / d
     else:
         raise ValueError(f"binary_point does not support measure {measure}")
+
+    return EffectPoint(
+        study_id=effect.study_id,
+        label=effect.label,
+        yi=yi,
+        vi=vi,
+        provenance=effect.provenance,
+    )
+
+
+def continuous_point(effect: ContinuousEffect, measure: EffectMeasure) -> EffectPoint:
+    """Mean difference or standardized mean difference from mean/SD/n per arm.
+
+    Cochrane Handbook v6.5:
+      MD  = m1 - m2,  var = sd1^2/n1 + sd2^2/n2.
+      SMD = Hedges' g = Cohen's d * J, on the pooled within-group SD, where the
+      small-sample correction J = 1 - 3/(4*(n1+n2) - 9);
+      var(g) = (n1+n2)/(n1*n2) + g^2 / (2*(n1+n2)).
+    SMD assumes approximate normality — check for skew upstream.
+    """
+    m1, sd1, n1 = effect.treatment.mean, effect.treatment.sd, effect.treatment.n
+    m2, sd2, n2 = effect.control.mean, effect.control.sd, effect.control.n
+
+    if measure is EffectMeasure.MD:
+        yi = m1 - m2
+        vi = sd1 * sd1 / n1 + sd2 * sd2 / n2
+    elif measure is EffectMeasure.SMD:
+        s_within = math.sqrt(
+            ((n1 - 1) * sd1 * sd1 + (n2 - 1) * sd2 * sd2) / (n1 + n2 - 2)
+        )
+        d = (m1 - m2) / s_within
+        j = 1.0 - 3.0 / (4.0 * (n1 + n2) - 9.0)  # Hedges' small-sample correction
+        yi = d * j
+        vi = (n1 + n2) / (n1 * n2) + yi * yi / (2.0 * (n1 + n2))
+    else:
+        raise ValueError(f"continuous_point does not support measure {measure}")
 
     return EffectPoint(
         study_id=effect.study_id,

@@ -77,6 +77,7 @@ export function EvidenceLedger() {
   const byStudy = new Map<string, ValidationResult>(
     review.validations.map((v) => [v.study_id, v])
   );
+  const robByStudy = new Map(review.rob.map((a) => [a.study_id, a]));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-8 py-10">
@@ -143,7 +144,7 @@ export function EvidenceLedger() {
                 <StatusPill status={status} />
               </div>
               <div className="col-span-3 flex justify-end">
-                <RobPips pending={pending} />
+                <RobPips pending={pending} assessment={robByStudy.get(e.study_id)} />
               </div>
             </div>
           );

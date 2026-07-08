@@ -1,22 +1,47 @@
-// Risk-of-bias pip bar. RoB 2 lands in Slice 4, so pips are a placeholder:
-// green when a trial is pooled, grey when it's pending human review.
-export function RobPips({ pending }: { pending: boolean }) {
+import type { RobAssessment, RobJudgment } from "../lib/types";
+
+// Risk-of-bias pip bar. When a RoB 2 assessment is available, each of the five
+// pips is coloured by its domain judgment; otherwise the bar shows the grey
+// "pending / not assessed" placeholder.
+const PIP_COLOR: Record<RobJudgment, string> = {
+  low: "bg-[#15803d]",
+  some_concerns: "bg-[#b45309]",
+  high: "bg-error",
+  pending: "bg-[#d1d5db]",
+};
+
+const OVERALL_LABEL: Record<RobJudgment, string> = {
+  low: "Low",
+  some_concerns: "Some",
+  high: "High",
+  pending: "Pending",
+};
+
+export function RobPips({
+  pending,
+  assessment,
+}: {
+  pending: boolean;
+  assessment?: RobAssessment;
+}) {
+  const judgments: RobJudgment[] = assessment
+    ? assessment.domains.map((d) => d.judgment)
+    : Array.from({ length: 5 }, () => "pending" as RobJudgment);
+  const overall = assessment?.overall ?? (pending ? "pending" : "pending");
+
   return (
     <div className="flex items-center gap-2">
       <span className="hidden text-[10px] font-semibold uppercase tracking-wider text-ink-muted-light md:inline">
-        {pending ? "Pending" : "n/a"}
+        {OVERALL_LABEL[overall]}
       </span>
       <div
         className={`flex gap-[2px] rounded-sm border border-hairline-light bg-white p-[2px] ${
-          pending ? "opacity-50" : ""
+          overall === "pending" ? "opacity-50" : ""
         }`}
-        aria-label={pending ? "risk of bias pending" : "risk of bias not yet assessed"}
+        aria-label={`risk of bias ${OVERALL_LABEL[overall].toLowerCase()}`}
       >
-        {Array.from({ length: 5 }).map((_, i) => (
-          <span
-            key={i}
-            className={`h-3 w-1.5 rounded-[1px] ${pending ? "bg-[#d1d5db]" : "bg-[#d1d5db]"}`}
-          />
+        {judgments.map((j, i) => (
+          <span key={i} className={`h-3 w-1.5 rounded-[1px] ${PIP_COLOR[j]}`} />
         ))}
       </div>
     </div>

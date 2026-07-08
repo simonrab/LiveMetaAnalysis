@@ -8,6 +8,8 @@ import { Report } from "./pages/Report";
 import { EvidenceLedger } from "./pages/EvidenceLedger";
 import { ExtractionConfirmation } from "./pages/ExtractionConfirmation";
 import { ReviewReport } from "./pages/ReviewReport";
+import { RiskOfBias } from "./pages/RiskOfBias";
+import { GradeDetail } from "./pages/GradeDetail";
 
 export default function App() {
   return (
@@ -26,6 +28,8 @@ export default function App() {
                 path="/reviews/:id/evidence/:trialId"
                 element={<ExtractionConfirmation />}
               />
+              <Route path="/reviews/:id/rob" element={<RiskOfBias />} />
+              <Route path="/reviews/:id/grade" element={<GradeDetail />} />
               <Route path="/reviews/:id/report" element={<ReviewReport />} />
             </Routes>
           </main>

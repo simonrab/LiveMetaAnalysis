@@ -13,12 +13,13 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from ..core import demo, llm, pipeline
+from ..core import demo, llm, pipeline, rob as rob_mod
 from ..core.schema import (
     Question,
     ReviewDecision,
     ReviewResult,
     ReviewSummary,
+    RobDecision,
 )
 from ..core.sources.clinicaltrials import ClinicalTrialsClient
 from ..core.store import SnapshotStore
@@ -59,6 +60,12 @@ class ParseRequest(BaseModel):
 class DecisionRequest(BaseModel):
     study_id: str
     decision: str  # "confirmed" | "flagged"
+    reason: str | None = None
+
+
+class RobDecisionRequest(BaseModel):
+    study_id: str
+    domain_key: str
     reason: str | None = None
 
 
@@ -142,6 +149,29 @@ def record_decision(
     )
     store.save_snapshot(repooled)
     return repooled
+
+
+@app.post("/api/reviews/{question_id}/rob/decision", response_model=ReviewResult)
+def record_rob_decision(
+    question_id: str,
+    req: RobDecisionRequest,
+    store: SnapshotStore = Depends(get_store),
+) -> ReviewResult:
+    """Persist a human "Verify" on one RoB 2 domain and snapshot the sign-off."""
+    latest = store.load_latest(question_id)
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No such review.")
+
+    store.save_rob_decision(
+        question_id,
+        RobDecision(
+            study_id=req.study_id, domain_key=req.domain_key, reason=req.reason
+        ),
+    )
+    decisions = store.load_rob_decisions(question_id)
+    latest.rob = [rob_mod.apply_rob_decisions(a, decisions) for a in latest.rob]
+    store.save_snapshot(latest)
+    return latest
 
 
 @app.websocket("/ws/review")
