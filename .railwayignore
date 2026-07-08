@@ -1,0 +1,9 @@
+# The Railway service builds only the Python backend. Keep the upload lean.
+web/
+tests/
+stitch_livemeta_precision_evidence_system/
+.venv/
+.livemeta_data/
+.pytest_cache/
+.git/
+.DS_Store

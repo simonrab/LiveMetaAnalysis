@@ -8,6 +8,19 @@ pipeline in a worker thread to keep the event loop free.
 
 from __future__ import annotations
 
+import sys
+
+# Load local .env (DATABASE_URL, ANTHROPIC_API_KEY) so the dev server and the
+# preview pick up Supabase without a wrapper script. Skipped under pytest, which
+# configures its stores explicitly and must stay network-free.
+if "pytest" not in sys.modules:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass
+
 import anyio
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +38,7 @@ from ..core.schema import (
     SnapshotMeta,
 )
 from ..core.sources.clinicaltrials import ClinicalTrialsClient
-from ..core.store import SnapshotStore
+from ..core.store import SnapshotStore, make_store
 
 app = FastAPI(title="LiveMeta", version="0.1.0")
 
@@ -43,8 +56,9 @@ def get_fetch_study():
 
 
 def get_store() -> SnapshotStore:
-    """Injectable snapshot store (overridden in tests to a tmp dir)."""
-    return SnapshotStore()
+    """Injectable snapshot store (overridden in tests to a tmp dir). In production
+    `make_store()` returns the Postgres backend when DATABASE_URL is set."""
+    return make_store()
 
 
 def get_parse():

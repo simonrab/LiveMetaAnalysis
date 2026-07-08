@@ -19,6 +19,19 @@ def test_fetch_study_returns_json():
 
 
 @respx.mock
+def test_fetch_study_sends_browser_user_agent():
+    # CT.gov returns 403 to the default python-httpx UA from datacenter IPs
+    # (e.g. Railway); a real User-Agent header is required in production.
+    route = respx.get(f"{BASE}/studies/NCT1").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    ClinicalTrialsClient().fetch_study("NCT1")
+    ua = route.calls.last.request.headers.get("user-agent", "")
+    assert "python-httpx" not in ua
+    assert "Mozilla" in ua
+
+
+@respx.mock
 def test_search_studies_extracts_ids_and_titles():
     payload = {
         "studies": [
