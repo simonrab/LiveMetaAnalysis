@@ -25,7 +25,7 @@ from .schema import (
     RobJudgment,
 )
 
-_DEFAULT_MODEL = "claude-opus-4-8"
+_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
 _SYSTEM_HINT = (
     "You are rating certainty of evidence with GRADE. Judge only two domains for "
