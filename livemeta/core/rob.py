@@ -32,7 +32,7 @@ ROB_DOMAINS: list[tuple[str, str]] = [
     ("D5", "Selection of the reported result"),
 ]
 
-_DEFAULT_MODEL = "claude-opus-4-8"
+_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
 _SYSTEM_HINT = (
     "You are appraising a randomized trial with the Cochrane RoB 2 tool. For each "

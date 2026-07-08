@@ -16,9 +16,10 @@ from pydantic import BaseModel
 from . import demo, search as search_mod
 from .schema import PICO, EffectMeasure, Question
 
-# Opus 4.8 is the default per the Anthropic API guidance; override for testing or
-# cost with LIVEMETA_LLM_MODEL.
-_DEFAULT_MODEL = "claude-opus-4-8"
+# Haiku 4.5 is the default: every Claude call here is a read-and-structure task
+# (parse PICO, read a trial, judge a domain) — none touch the math — so the fast,
+# cheap model fits. Override for quality or testing with LIVEMETA_LLM_MODEL.
+_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
 _SYSTEM_HINT = (
     "You structure a clinician's question into PICO for a meta-analysis. "
