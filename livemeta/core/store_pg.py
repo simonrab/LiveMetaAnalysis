@@ -1,60 +1,49 @@
-"""Snapshot store: versioned ReviewResult persistence keyed by question id.
+"""Postgres snapshot store — the deployed backend (Supabase).
 
-A single-file SQLite database (Slice 5). The public interface — save_snapshot /
-load_latest / list_versions plus the decision round-trips — is unchanged from the
-Slice-2 JSON store it replaces, so every caller and its tests are untouched. The
-version list is the audit-trail history the living layer reads; load_version and
-list_snapshots expose past runs and their timestamps.
+A drop-in for the SQLite `SnapshotStore` with the identical public interface, so
+every caller and the whole test contract are unchanged; only the placeholder
+style (%s), the upsert dialect, and the connection are Postgres-flavoured. Chosen
+at runtime by `make_store()` when `DATABASE_URL` is set. A fresh connection per
+call mirrors the SQLite store and keeps the WebSocket worker-thread path safe.
+
+`result_json` is stored as `text` (not `jsonb`): the headline pool numbers are
+denormalised into their own columns, so nothing ever queries inside the blob.
 """
 
 from __future__ import annotations
 
 import os
-import sqlite3
-from contextlib import closing
 from datetime import datetime, timezone
-from pathlib import Path
+
+import psycopg
+from psycopg.rows import dict_row
 
 from .schema import ReviewDecision, ReviewResult, RobDecision, SnapshotMeta
-
-_DEFAULT_DIR = ".livemeta_data"
-_DB_NAME = "livemeta.db"
-
-
-def make_store():
-    """The deployed backend picks itself: Postgres (Supabase) when DATABASE_URL is
-    set, else the local single-file SQLite store. Both satisfy one interface, so
-    every caller is agnostic. psycopg is imported lazily so local runs and the
-    SQLite test suite never need it installed."""
-    if os.environ.get("DATABASE_URL"):
-        from .store_pg import PostgresSnapshotStore
-
-        return PostgresSnapshotStore()
-    return SnapshotStore()
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-class SnapshotStore:
-    def __init__(self, data_dir: str | Path | None = None):
-        base = data_dir or os.environ.get("LIVEMETA_DATA_DIR", _DEFAULT_DIR)
-        self._dir = Path(base)
-        self._dir.mkdir(parents=True, exist_ok=True)
-        self._db = self._dir / _DB_NAME
+class PostgresSnapshotStore:
+    def __init__(self, dsn: str | None = None, schema: str | None = None):
+        self._dsn = dsn or os.environ["DATABASE_URL"]
+        # A quoted, validated identifier — tests pass a generated schema name.
+        self._schema = schema or "public"
+        if not self._schema.replace("_", "").isalnum():
+            raise ValueError(f"invalid schema name {self._schema!r}")
         self._init_db()
 
-    def _connect(self) -> sqlite3.Connection:
-        # A fresh connection per call: save_snapshot runs inside anyio.to_thread on
-        # the WebSocket path, so sharing one connection across threads would raise.
-        conn = sqlite3.connect(self._db)
-        conn.row_factory = sqlite3.Row
+    def _connect(self) -> psycopg.Connection:
+        conn = psycopg.connect(self._dsn, row_factory=dict_row, autocommit=True)
+        conn.execute(f'SET search_path TO "{self._schema}"')
         return conn
 
     def _init_db(self) -> None:
-        with closing(self._connect()) as conn:
-            conn.executescript(
+        with self._connect() as conn:
+            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self._schema}"')
+            conn.execute(f'SET search_path TO "{self._schema}"')
+            conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS snapshots (
                     question_id TEXT NOT NULL,
@@ -62,19 +51,27 @@ class SnapshotStore:
                     created_at  TEXT NOT NULL,
                     result_json TEXT NOT NULL,
                     k           INTEGER,
-                    estimate    REAL,
-                    ci_low      REAL,
-                    ci_high     REAL,
+                    estimate    DOUBLE PRECISION,
+                    ci_low      DOUBLE PRECISION,
+                    ci_high     DOUBLE PRECISION,
                     measure     TEXT,
                     PRIMARY KEY (question_id, version)
-                );
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS decisions (
                     question_id   TEXT NOT NULL,
                     study_id      TEXT NOT NULL,
                     decision_json TEXT NOT NULL,
                     updated_at    TEXT NOT NULL,
                     PRIMARY KEY (question_id, study_id)
-                );
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS rob_decisions (
                     question_id   TEXT NOT NULL,
                     study_id      TEXT NOT NULL,
@@ -82,29 +79,34 @@ class SnapshotStore:
                     decision_json TEXT NOT NULL,
                     updated_at    TEXT NOT NULL,
                     PRIMARY KEY (question_id, study_id, domain_key)
-                );
+                )
                 """
             )
-            conn.commit()
+
+    def drop_schema(self) -> None:
+        """Tear down an isolated test schema; a no-op safety guard on `public`."""
+        if self._schema == "public":
+            return
+        with self._connect() as conn:
+            conn.execute(f'DROP SCHEMA IF EXISTS "{self._schema}" CASCADE')
 
     # --- snapshots -----------------------------------------------------------
 
     def save_snapshot(self, result: ReviewResult) -> int:
-        """Append a snapshot for its question; return the new version number."""
         question_id = result.question.id
         pool = result.pool
-        with closing(self._connect()) as conn, conn:
-            (max_version,) = conn.execute(
-                "SELECT COALESCE(MAX(version), 0) FROM snapshots WHERE question_id = ?",
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(version), 0) AS m FROM snapshots WHERE question_id = %s",
                 (question_id,),
             ).fetchone()
-            version = max_version + 1
+            version = row["m"] + 1
             conn.execute(
                 """
                 INSERT INTO snapshots
                     (question_id, version, created_at, result_json,
                      k, estimate, ci_low, ci_high, measure)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     question_id,
@@ -121,37 +123,35 @@ class SnapshotStore:
         return version
 
     def load_latest(self, question_id: str) -> ReviewResult | None:
-        with closing(self._connect()) as conn:
+        with self._connect() as conn:
             row = conn.execute(
-                "SELECT result_json FROM snapshots WHERE question_id = ? "
+                "SELECT result_json FROM snapshots WHERE question_id = %s "
                 "ORDER BY version DESC LIMIT 1",
                 (question_id,),
             ).fetchone()
         return ReviewResult.model_validate_json(row["result_json"]) if row else None
 
     def load_version(self, question_id: str, version: int) -> ReviewResult | None:
-        """Load one specific historical version (for the read-only audit view)."""
-        with closing(self._connect()) as conn:
+        with self._connect() as conn:
             row = conn.execute(
-                "SELECT result_json FROM snapshots WHERE question_id = ? AND version = ?",
+                "SELECT result_json FROM snapshots WHERE question_id = %s AND version = %s",
                 (question_id, version),
             ).fetchone()
         return ReviewResult.model_validate_json(row["result_json"]) if row else None
 
     def list_versions(self, question_id: str) -> list[int]:
-        with closing(self._connect()) as conn:
+        with self._connect() as conn:
             rows = conn.execute(
-                "SELECT version FROM snapshots WHERE question_id = ? ORDER BY version",
+                "SELECT version FROM snapshots WHERE question_id = %s ORDER BY version",
                 (question_id,),
             ).fetchall()
         return [r["version"] for r in rows]
 
     def list_snapshots(self, question_id: str) -> list[SnapshotMeta]:
-        """The version timeline with headline numbers — the audit-trail history."""
-        with closing(self._connect()) as conn:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT question_id, version, created_at, k, estimate, ci_low, ci_high, measure "
-                "FROM snapshots WHERE question_id = ? ORDER BY version",
+                "FROM snapshots WHERE question_id = %s ORDER BY version",
                 (question_id,),
             ).fetchall()
         return [
@@ -169,8 +169,7 @@ class SnapshotStore:
         ]
 
     def list_questions(self) -> list[str]:
-        """All question ids with at least one saved snapshot — feeds the dashboard."""
-        with closing(self._connect()) as conn:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT DISTINCT question_id FROM snapshots ORDER BY question_id"
             ).fetchall()
@@ -179,14 +178,13 @@ class SnapshotStore:
     # --- human decisions -----------------------------------------------------
 
     def save_decision(self, question_id: str, decision: ReviewDecision) -> None:
-        """Record a human confirm/flag; the latest decision per trial wins."""
         if decision.timestamp is None:
             decision = decision.model_copy(update={"timestamp": _now()})
-        with closing(self._connect()) as conn, conn:
+        with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO decisions (question_id, study_id, decision_json, updated_at)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
                 ON CONFLICT(question_id, study_id)
                 DO UPDATE SET decision_json = excluded.decision_json,
                               updated_at = excluded.updated_at
@@ -195,23 +193,22 @@ class SnapshotStore:
             )
 
     def load_decisions(self, question_id: str) -> list[ReviewDecision]:
-        with closing(self._connect()) as conn:
+        with self._connect() as conn:
             rows = conn.execute(
-                "SELECT decision_json FROM decisions WHERE question_id = ? ORDER BY study_id",
+                "SELECT decision_json FROM decisions WHERE question_id = %s ORDER BY study_id",
                 (question_id,),
             ).fetchall()
         return [ReviewDecision.model_validate_json(r["decision_json"]) for r in rows]
 
     def save_rob_decision(self, question_id: str, decision: RobDecision) -> None:
-        """Record a human RoB 2 domain sign-off; latest per (study, domain) wins."""
         if decision.timestamp is None:
             decision = decision.model_copy(update={"timestamp": _now()})
-        with closing(self._connect()) as conn, conn:
+        with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO rob_decisions
                     (question_id, study_id, domain_key, decision_json, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT(question_id, study_id, domain_key)
                 DO UPDATE SET decision_json = excluded.decision_json,
                               updated_at = excluded.updated_at
@@ -226,9 +223,9 @@ class SnapshotStore:
             )
 
     def load_rob_decisions(self, question_id: str) -> list[RobDecision]:
-        with closing(self._connect()) as conn:
+        with self._connect() as conn:
             rows = conn.execute(
-                "SELECT decision_json FROM rob_decisions WHERE question_id = ? "
+                "SELECT decision_json FROM rob_decisions WHERE question_id = %s "
                 "ORDER BY study_id, domain_key",
                 (question_id,),
             ).fetchall()

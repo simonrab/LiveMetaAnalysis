@@ -46,7 +46,7 @@ from ..core.schema import (
 from ..core.sources.clinicaltrials import ClinicalTrialsClient
 from ..core.stats import engine as stats_engine
 from ..core.stats import sensitivity as sensitivity_mod
-from ..core.store import SnapshotStore
+from ..core.store import SnapshotStore, make_store
 
 mcp = FastMCP("livemeta")
 
@@ -76,7 +76,7 @@ def set_store(store: SnapshotStore) -> None:
 def get_store() -> SnapshotStore:
     global _store
     if _store is None:
-        _store = SnapshotStore()
+        _store = make_store()
     return _store
 
 

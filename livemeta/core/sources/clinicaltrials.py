@@ -10,6 +10,16 @@ import httpx
 
 BASE_URL = "https://clinicaltrials.gov/api/v2"
 
+# ClinicalTrials.gov 403s the default python-httpx User-Agent from datacenter
+# IPs (e.g. Railway). A browser-like UA is required for the deployed backend.
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+}
+
 
 class ClinicalTrialsClient:
     def __init__(self, base_url: str = BASE_URL, timeout: float = 40.0):
@@ -18,7 +28,9 @@ class ClinicalTrialsClient:
 
     def fetch_study(self, nct_id: str) -> dict:
         """Full study record (protocol + results) for one trial."""
-        resp = httpx.get(f"{self._base}/studies/{nct_id}", timeout=self._timeout)
+        resp = httpx.get(
+            f"{self._base}/studies/{nct_id}", headers=_HEADERS, timeout=self._timeout
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -31,6 +43,7 @@ class ClinicalTrialsClient:
                 "pageSize": page_size,
                 "fields": "protocolSection.identificationModule",
             },
+            headers=_HEADERS,
             timeout=self._timeout,
         )
         resp.raise_for_status()
