@@ -27,6 +27,16 @@ def test_build_query_includes_intervention_and_outcome():
     assert "MACE" in q
 
 
+def test_build_query_excludes_comparator_and_population():
+    # Comparator ("placebo") and population over-constrain CT.gov's AND-match, so
+    # they are left out of the search term (still used downstream).
+    q = search.build_query(_pico()).lower()
+    assert "placebo" not in q
+    assert "diabetes" not in q  # population term absent
+    assert "glp-1 receptor agonist" in q
+    assert "mace" in q
+
+
 @respx.mock
 def test_search_trials_maps_hits_to_candidates():
     route = respx.get(STUDIES_URL).mock(

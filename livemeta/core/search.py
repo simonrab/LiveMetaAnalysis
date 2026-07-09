@@ -11,12 +11,16 @@ from .sources.clinicaltrials import ClinicalTrialsClient
 
 
 def build_query(pico: PICO) -> str:
-    """A CT.gov free-text term from the intervention, comparator, and outcome.
+    """A CT.gov free-text term from the intervention and outcome only.
 
-    Population is deliberately left out of the term: it over-constrains CT.gov's
-    free-text match. Eligibility filtering happens downstream, not in the query.
+    Population *and* comparator are deliberately left out: both over-constrain
+    CT.gov's free-text AND-match. The comparator (usually "Placebo") drops every
+    active-comparator trial and every record that just doesn't index the word,
+    collapsing broad questions to one or two hits. Both fields are still used
+    downstream for eligibility and extraction — they just don't narrow the
+    candidate search here.
     """
-    parts = [p.strip() for p in (pico.intervention, pico.comparator, pico.outcome) if p and p.strip()]
+    parts = [p.strip() for p in (pico.intervention, pico.outcome) if p and p.strip()]
     return " AND ".join(parts)
 
 
