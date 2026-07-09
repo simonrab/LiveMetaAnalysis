@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 import psycopg
 from psycopg.rows import dict_row
 
+from .ci.schema import DevelopmentEvent
 from .schema import ReviewDecision, ReviewResult, RobDecision, SnapshotMeta
 
 
@@ -79,6 +80,34 @@ class PostgresSnapshotStore:
                     decision_json TEXT NOT NULL,
                     updated_at    TEXT NOT NULL,
                     PRIMARY KEY (question_id, study_id, domain_key)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS development_events (
+                    landscape_id TEXT NOT NULL,
+                    asset_name   TEXT NOT NULL,
+                    indication   TEXT NOT NULL,
+                    source_type  TEXT NOT NULL,
+                    event_type   TEXT NOT NULL,
+                    event_date   TEXT NOT NULL,
+                    event_json   TEXT NOT NULL,
+                    updated_at   TEXT NOT NULL,
+                    PRIMARY KEY (landscape_id, asset_name, indication, source_type,
+                                 event_type, event_date)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS landscape_links (
+                    landscape_id TEXT NOT NULL,
+                    asset_name   TEXT NOT NULL,
+                    indication   TEXT NOT NULL,
+                    question_id  TEXT NOT NULL,
+                    updated_at   TEXT NOT NULL,
+                    PRIMARY KEY (landscape_id, asset_name, indication)
                 )
                 """
             )
@@ -230,3 +259,65 @@ class PostgresSnapshotStore:
                 (question_id,),
             ).fetchall()
         return [RobDecision.model_validate_json(r["decision_json"]) for r in rows]
+
+    # --- competitive-intelligence: events + evidence links -------------------
+
+    def save_events(self, landscape_id: str, events: list[DevelopmentEvent]) -> None:
+        with self._connect() as conn:
+            for e in events:
+                conn.execute(
+                    """
+                    INSERT INTO development_events
+                        (landscape_id, asset_name, indication, source_type,
+                         event_type, event_date, event_json, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT(landscape_id, asset_name, indication, source_type,
+                                event_type, event_date)
+                    DO UPDATE SET event_json = excluded.event_json,
+                                  updated_at = excluded.updated_at
+                    """,
+                    (
+                        landscape_id,
+                        e.asset_name,
+                        e.indication,
+                        e.source_type.value,
+                        e.event_type.value,
+                        e.date or "",
+                        e.model_dump_json(),
+                        _now(),
+                    ),
+                )
+
+    def load_events(self, landscape_id: str) -> list[DevelopmentEvent]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT event_json FROM development_events WHERE landscape_id = %s "
+                "ORDER BY event_date",
+                (landscape_id,),
+            ).fetchall()
+        return [DevelopmentEvent.model_validate_json(r["event_json"]) for r in rows]
+
+    def save_link(
+        self, landscape_id: str, asset_name: str, indication: str, question_id: str
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO landscape_links
+                    (landscape_id, asset_name, indication, question_id, updated_at)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT(landscape_id, asset_name, indication)
+                DO UPDATE SET question_id = excluded.question_id,
+                              updated_at = excluded.updated_at
+                """,
+                (landscape_id, asset_name, indication, question_id, _now()),
+            )
+
+    def load_links(self, landscape_id: str) -> dict[tuple[str, str], str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT asset_name, indication, question_id FROM landscape_links "
+                "WHERE landscape_id = %s",
+                (landscape_id,),
+            ).fetchall()
+        return {(r["asset_name"], r["indication"]): r["question_id"] for r in rows}

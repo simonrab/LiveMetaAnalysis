@@ -13,6 +13,8 @@ import { GradeDetail } from "./pages/GradeDetail";
 import { Updates } from "./pages/Updates";
 import { AuditTrail } from "./pages/AuditTrail";
 import { SnapshotView } from "./pages/SnapshotView";
+import { CompetitorLandscape } from "./pages/CompetitorLandscape";
+import { AssetProfile } from "./pages/AssetProfile";
 
 export default function App() {
   return (
@@ -24,6 +26,8 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/ask" element={<Ask />} />
+              <Route path="/landscape" element={<CompetitorLandscape />} />
+              <Route path="/landscape/asset/:name" element={<AssetProfile />} />
               <Route path="/run" element={<RunningPipeline />} />
               <Route path="/report" element={<Report />} />
               <Route path="/reviews/:id/evidence" element={<EvidenceLedger />} />

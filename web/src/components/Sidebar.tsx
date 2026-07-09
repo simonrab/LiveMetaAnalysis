@@ -13,6 +13,7 @@ function item(active: boolean): string {
 const primary = [
   { to: "/", label: "Dashboard", end: true, icon: "space_dashboard" },
   { to: "/ask", label: "Ask", end: false, icon: "help_outline" },
+  { to: "/landscape", label: "Landscape", end: false, icon: "hub" },
 ];
 
 // The current review id, if we're inside a /reviews/:id/... route — so the

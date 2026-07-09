@@ -2,6 +2,8 @@
 // review.tsx; everything request/response goes through here.
 
 import type {
+  DevelopmentEvent,
+  Landscape,
   Question,
   ReviewDecision,
   ReviewDiff,
@@ -111,5 +113,57 @@ export async function getHistory(id: string): Promise<SnapshotMeta[]> {
 export async function getVersion(id: string, version: number): Promise<ReviewResult> {
   return json<ReviewResult>(
     await fetch(apiUrl(`/api/reviews/${encodeURIComponent(id)}/versions/${version}`))
+  );
+}
+
+// --- Competitive-intelligence landscape --------------------------------------
+
+export async function getLandscape(
+  condition: string,
+  asOf?: string | null
+): Promise<Landscape> {
+  const params = new URLSearchParams({ condition });
+  if (asOf) params.set("as_of", asOf);
+  return json<Landscape>(await fetch(apiUrl(`/api/landscape?${params.toString()}`)));
+}
+
+export async function getAssetTimeline(
+  condition: string,
+  name: string
+): Promise<DevelopmentEvent[]> {
+  const params = new URLSearchParams({ condition });
+  return json<DevelopmentEvent[]>(
+    await fetch(
+      apiUrl(`/api/landscape/asset/${encodeURIComponent(name)}?${params.toString()}`)
+    )
+  );
+}
+
+export async function linkLandscape(body: {
+  condition: string;
+  asset_name: string;
+  indication: string;
+  question_id: string;
+}): Promise<Landscape> {
+  return json<Landscape>(
+    await fetch(apiUrl("/api/landscape/link"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function ingestLandscape(body: {
+  condition: string;
+  text: string;
+  source_label: string;
+}): Promise<Landscape> {
+  return json<Landscape>(
+    await fetch(apiUrl("/api/landscape/ingest"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
   );
 }

@@ -27,6 +27,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ..core import demo, living, llm, pipeline, rob as rob_mod
+from ..core.ci import service as ci_service
+from ..core.ci.schema import DevelopmentEvent, Landscape
 from ..core.diff import diff_reviews, status_from_diff
 from ..core.schema import (
     DiversityDecision,
@@ -76,6 +78,14 @@ def get_parse():
     return parse
 
 
+def get_ci_search():
+    """Injectable CT.gov pipeline search for the competitive landscape.
+
+    Returns the wide-fields search that keeps sponsor/phase/status/interventions
+    (overridden in tests with canned studies so the landscape is network-free)."""
+    return ClinicalTrialsClient().search_pipeline
+
+
 class ParseRequest(BaseModel):
     text: str
 
@@ -98,6 +108,19 @@ class UpdateRequest(BaseModel):
 
 class DiversityDecisionRequest(BaseModel):
     reason: str | None = None
+
+
+class IngestRequest(BaseModel):
+    condition: str
+    text: str
+    source_label: str
+
+
+class LinkRequest(BaseModel):
+    condition: str
+    asset_name: str
+    indication: str
+    question_id: str
 
 
 def _summary(result: ReviewResult, versions: int, status: str) -> ReviewSummary:
@@ -284,6 +307,57 @@ def record_rob_decision(
     latest.rob = [rob_mod.apply_rob_decisions(a, decisions) for a in latest.rob]
     store.save_snapshot(latest)
     return latest
+
+
+# --- Competitive-intelligence landscape -------------------------------------
+
+
+@app.get("/api/landscape", response_model=Landscape)
+def get_landscape(
+    condition: str,
+    as_of: str | None = None,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_search),
+) -> Landscape:
+    """The competitive matrix for a condition, reconstructed as of `as_of`.
+
+    Assets × indications, cells colored by development stage, each carrying the
+    living pooled-evidence badge when linked to a saved review.
+    """
+    return ci_service.get_landscape(store, condition, as_of=as_of, search_pipeline=search)
+
+
+@app.get("/api/landscape/asset/{name}", response_model=list[DevelopmentEvent])
+def get_asset_timeline(
+    name: str, condition: str, store: SnapshotStore = Depends(get_store)
+) -> list[DevelopmentEvent]:
+    """One asset's dated development history for the drill-in view."""
+    return ci_service.asset_timeline(store, condition, name)
+
+
+@app.post("/api/landscape/ingest", response_model=Landscape)
+def ingest_landscape(
+    req: IngestRequest,
+    store: SnapshotStore = Depends(get_store),
+) -> Landscape:
+    """Read a free-text announcement/filing into events, then re-assemble.
+
+    The model is resolved from ANTHROPIC_API_KEY inside the service; with no key
+    it returns no events (the tool abstains rather than invents a pipeline)."""
+    ci_service.ingest_to_landscape(store, req.condition, req.text, req.source_label)
+    return ci_service.get_landscape(store, req.condition)
+
+
+@app.post("/api/landscape/link", response_model=Landscape)
+def link_landscape(
+    req: LinkRequest,
+    store: SnapshotStore = Depends(get_store),
+) -> Landscape:
+    """Link an asset×indication cell to a saved review so its evidence badge shows."""
+    ci_service.link_review(
+        store, req.condition, req.asset_name, req.indication, req.question_id
+    )
+    return ci_service.get_landscape(store, req.condition)
 
 
 @app.websocket("/ws/review")
