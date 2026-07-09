@@ -21,6 +21,8 @@ from mcp.server.fastmcp import FastMCP
 
 from ..core import demo
 from ..core import extract as extract_mod
+from ..core.ci import service as ci_service
+from ..core.ci.schema import DevelopmentEvent, Landscape
 from ..core import grade as grade_mod
 from ..core import living as living_mod
 from ..core import llm as llm_mod
@@ -305,6 +307,43 @@ def update(question_id: str, new_trial_id: str) -> ReviewDiff:
     return living_mod.apply_update(
         get_store(), question_id, new_trial_id, get_client().fetch_study
     )
+
+
+@mcp.tool()
+def map_landscape(condition: str, as_of: str | None = None) -> Landscape:
+    """Map the competitive pipeline for a condition, as of an optional date.
+
+    Assets × indications from ClinicalTrials.gov (sponsor, phase, status, dates),
+    reconciled over time so `as_of` reconstructs the pipeline at a past point.
+    Cells linked to a saved review carry that review's living pooled-evidence
+    badge — the competitive skeleton joined to the evidence flesh.
+    """
+    return ci_service.get_landscape(
+        get_store(), condition, as_of=as_of, search_pipeline=get_client().search_pipeline
+    )
+
+
+@mcp.tool()
+def track_asset(condition: str, name: str) -> list[DevelopmentEvent]:
+    """Return one asset's dated development timeline within a condition landscape."""
+    ci_service.get_landscape(
+        get_store(), condition, search_pipeline=get_client().search_pipeline
+    )  # ensure the landscape is seeded before reading the timeline
+    return ci_service.asset_timeline(get_store(), condition, name)
+
+
+@mcp.tool()
+def ingest_announcement(
+    condition: str, text: str, source_label: str
+) -> list[DevelopmentEvent]:
+    """Read a free-text corporate announcement/filing into development events.
+
+    Claude structures what the document states (each event with its source
+    snippet); low-confidence or not-found milestones are dropped, and with no key
+    configured nothing is returned — the tool abstains rather than inventing a
+    stage. Persisted so they appear on the landscape.
+    """
+    return ci_service.ingest_to_landscape(get_store(), condition, text, source_label)
 
 
 def main() -> None:

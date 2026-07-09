@@ -288,3 +288,85 @@ export interface SnapshotMeta {
   ci_high: number | null;
   measure: string;
 }
+
+// --- Competitive-intelligence landscape (mirrors livemeta.core.ci.schema) ----
+
+export type Phase =
+  | "preclinical"
+  | "phase_1"
+  | "phase_1_2"
+  | "phase_2"
+  | "phase_2_3"
+  | "phase_3"
+  | "phase_4"
+  | "filed"
+  | "approved"
+  | "withdrawn"
+  | "unknown";
+
+// Short display labels for each stage, in ascending order of advancement.
+export const PHASE_LABEL: Record<Phase, string> = {
+  preclinical: "Preclinical",
+  phase_1: "Phase 1",
+  phase_1_2: "Phase 1/2",
+  phase_2: "Phase 2",
+  phase_2_3: "Phase 2/3",
+  phase_3: "Phase 3",
+  phase_4: "Phase 4",
+  filed: "Filed",
+  approved: "Approved",
+  withdrawn: "Withdrawn",
+  unknown: "Unknown",
+};
+
+export interface DevelopmentEvent {
+  asset_name: string;
+  indication: string;
+  line_of_therapy?: string | null;
+  phase: Phase;
+  status?: string | null;
+  event_type: string;
+  date?: string | null;
+  source_type: string;
+  sponsor?: string | null;
+  sponsor_class?: string | null;
+  provenance: Provenance[];
+}
+
+export interface EvidenceBadge {
+  question_id: string;
+  measure: string;
+  state: "pooled" | "gate_open" | "abstained";
+  estimate?: number | null;
+  ci_low?: number | null;
+  ci_high?: number | null;
+  grade_certainty?: string | null;
+  conclusion?: string | null;
+  version?: number | null;
+  k: number;
+}
+
+export interface LandscapeCell {
+  asset_name: string;
+  indication: string;
+  line_of_therapy?: string | null;
+  current_phase: Phase;
+  status?: string | null;
+  sponsor?: string | null;
+  sponsor_class?: string | null;
+  latest_event?: DevelopmentEvent | null;
+  conflict: boolean;
+  conflict_note?: string | null;
+  question_id?: string | null;
+  evidence?: EvidenceBadge | null;
+  provenance: Provenance[];
+}
+
+export interface Landscape {
+  condition: string;
+  as_of?: string | null;
+  assets: string[];
+  indications: string[];
+  cells: LandscapeCell[];
+  notes: string[];
+}

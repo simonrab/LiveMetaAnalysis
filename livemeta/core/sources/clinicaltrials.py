@@ -54,3 +54,37 @@ class ClinicalTrialsClient:
                 {"nct_id": ident.get("nctId", ""), "title": ident.get("briefTitle", "")}
             )
         return hits
+
+    # Modules needed to place a drug in the competitive pipeline: who sponsors it,
+    # what phase, its status and dated milestones, the drug name, the indication.
+    _PIPELINE_FIELDS = ",".join(
+        "protocolSection." + m
+        for m in (
+            "identificationModule",
+            "sponsorCollaboratorsModule",
+            "designModule",
+            "statusModule",
+            "armsInterventionsModule",
+            "conditionsModule",
+        )
+    )
+
+    def search_pipeline(self, query: str, page_size: int = 1000) -> list[dict]:
+        """Search returning the raw study records (with pipeline modules).
+
+        The competitive-intelligence sibling of `search_studies`: it keeps the
+        full structured record so the CI parser can read sponsor / phase / status
+        / dates / interventions, which `search_studies` deliberately strips.
+        """
+        resp = httpx.get(
+            f"{self._base}/studies",
+            params={
+                "query.term": query,
+                "pageSize": page_size,
+                "fields": self._PIPELINE_FIELDS,
+            },
+            headers=_HEADERS,
+            timeout=self._timeout,
+        )
+        resp.raise_for_status()
+        return resp.json().get("studies", [])
