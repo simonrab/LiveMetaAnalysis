@@ -21,7 +21,7 @@ def build_query(pico: PICO) -> str:
 
 
 def search_trials(
-    pico: PICO, max_results: int = 20, client: ClinicalTrialsClient | None = None
+    pico: PICO, max_results: int = 1000, client: ClinicalTrialsClient | None = None
 ) -> list[TrialCandidate]:
     """Search CT.gov for candidate trials matching the PICO."""
     client = client or ClinicalTrialsClient()
