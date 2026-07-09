@@ -34,7 +34,7 @@ class ClinicalTrialsClient:
         resp.raise_for_status()
         return resp.json()
 
-    def search_studies(self, query: str, page_size: int = 20) -> list[dict]:
+    def search_studies(self, query: str, page_size: int = 1000) -> list[dict]:
         """Search by free-text term; return [{nct_id, title}]."""
         resp = httpx.get(
             f"{self._base}/studies",

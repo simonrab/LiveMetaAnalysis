@@ -51,3 +51,17 @@ def test_search_trials_maps_hits_to_candidates():
 
     assert route.called
     assert hits == [TrialCandidate(nct_id="NCT01179048", title="LEADER")]
+
+
+@respx.mock
+def test_search_trials_default_cap_is_1000():
+    # The default candidate cap is CT.gov's per-request max, so broad questions
+    # aren't silently truncated.
+    route = respx.get(STUDIES_URL).mock(
+        return_value=httpx.Response(200, json={"studies": []})
+    )
+
+    search.search_trials(_pico())
+
+    assert route.called
+    assert route.calls.last.request.url.params["pageSize"] == "1000"
