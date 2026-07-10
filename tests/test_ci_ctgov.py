@@ -92,6 +92,25 @@ def test_readout_only_when_completed_with_a_date():
     assert EventType.TRIAL_START in kinds
 
 
+def test_indication_picks_the_condition_matching_the_landscape_focus():
+    # Obesity is a comorbidity here, listed after the primary condition. The
+    # landscape focus should pull "Obesity" as the indication, not "Hypertension".
+    study = _study(conditions=("Hypertension", "Obesity"))
+    focused = cp.study_to_events(study, focus_condition="Obesity")
+    assert all(e.indication == "Obesity" for e in focused)
+    # Without a focus, behaviour is unchanged: the first listed condition.
+    assert all(e.indication == "Hypertension" for e in cp.study_to_events(study))
+
+
+def test_indication_uses_the_searched_area_when_trial_names_no_subtype():
+    # Obesity is incidental here (a breast-cancer trial CT.gov linked to obesity).
+    # Label the cell with the searched area, not the off-target comorbidity, so
+    # "Breast Cancer" never leaks into an obesity landscape's indication list.
+    study = _study(conditions=("Breast Cancer",))
+    focused = cp.study_to_events(study, focus_condition="Obesity")
+    assert all(e.indication == "Obesity" for e in focused)
+
+
 def test_phase_mapping_combined_phase_2_3():
     events = cp.study_to_events(_study(phases=("PHASE2", "PHASE3")))
     assert all(e.phase == Phase.PHASE_2_3 for e in events)

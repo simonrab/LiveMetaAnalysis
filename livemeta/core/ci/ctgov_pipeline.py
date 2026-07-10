@@ -8,6 +8,8 @@ beyond direct field reads (the "no silent back-calculation" contract).
 
 from __future__ import annotations
 
+import re
+
 from ..schema import Provenance
 from .schema import (
     Asset,
@@ -66,6 +68,38 @@ def _phase(study: dict) -> Phase:
 
 def _condition(study: dict) -> str:
     conditions = _protocol(study).get("conditionsModule", {}).get("conditions", []) or []
+    return conditions[0] if conditions else "Unspecified"
+
+
+def _focus_terms(focus: str) -> list[str]:
+    """Significant lowercased tokens from a searched condition (e.g. 'Type 2
+    Diabetes' -> ['type', 'diabetes']); the whole phrase if nothing qualifies."""
+    tokens = [t for t in re.split(r"[^a-z0-9]+", focus.lower()) if len(t) >= 4]
+    return tokens or [focus.lower().strip()]
+
+
+def _focus_condition(study: dict, focus: str | None) -> str:
+    """The trial's indication as it relates to the landscape's condition area.
+
+    A landscape for "Obesity" pulls thousands of trials that list obesity as a
+    comorbidity behind some other primary condition; taking the first condition
+    verbatim floods the indication list with unrelated diseases (Hypertension,
+    Breast Cancer, COVID-19...). When a focus is given, prefer the trial
+    condition that names it (so the cell reads "Childhood Obesity" or "Obesity",
+    not "Hypertension"); when the trial names no condition in that area, label
+    the cell with the searched area itself rather than an off-target comorbidity.
+    The searched condition is a real member of the trial's CT.gov condition set
+    (that is why query.cond matched it), so this labels, it does not invent.
+
+    With no focus (e.g. the per-asset dossier), keep the first listed condition.
+    """
+    conditions = _protocol(study).get("conditionsModule", {}).get("conditions", []) or []
+    if focus:
+        terms = _focus_terms(focus)
+        for c in conditions:
+            if any(t in c.lower() for t in terms):
+                return c
+        return focus
     return conditions[0] if conditions else "Unspecified"
 
 
@@ -132,18 +166,24 @@ def study_to_asset(study: dict) -> Asset:
     )
 
 
-def study_to_events(study: dict) -> list[DevelopmentEvent]:
+def study_to_events(
+    study: dict, focus_condition: str | None = None
+) -> list[DevelopmentEvent]:
     """Emit the dated pipeline milestones for one trial.
 
     A TRIAL_START event places the asset at its phase from the trial's start
     date; a READOUT event marks the primary-completion date when the trial has
     completed. Both are what let the landscape reconstruct the pipeline over time.
+
+    `focus_condition` is the landscape's searched condition; when given, the
+    event's indication is scoped to that area (see `_focus_condition`) so the
+    indication list stays relevant instead of enumerating every comorbidity.
     """
     nct = _nct(study)
     status_mod = _protocol(study).get("statusModule", {})
     overall = status_mod.get("overallStatus")
     phase = _phase(study)
-    indication = _condition(study)
+    indication = _focus_condition(study, focus_condition)
     asset = _asset_name(study) or nct
     sponsor, sponsor_class = _sponsor(study)
     source_url = f"https://clinicaltrials.gov/study/{nct}"
