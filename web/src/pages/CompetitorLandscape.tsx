@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getLandscape } from "../lib/api";
 import type { Landscape, LandscapeCell } from "../lib/types";
@@ -8,6 +8,12 @@ import { EvidenceBadgeView } from "../components/EvidenceBadgeView";
 
 const MIN_YEAR = 2008;
 const MAX_YEAR = new Date().getFullYear();
+
+// A broad condition (e.g. "Obesity") can return ~1000 assets × hundreds of
+// indications. Rendering that full matrix is hundreds of thousands of cells,
+// which freezes the browser. Cap the rows and show only the indications those
+// rows actually use, with a note to narrow the search.
+const MAX_ASSETS = 50;
 
 function Cell({ cell, condition }: { cell: LandscapeCell; condition: string }) {
   return (
@@ -36,6 +42,81 @@ function Cell({ cell, condition }: { cell: LandscapeCell; condition: string }) {
   );
 }
 
+// The matrix can be enormous (a broad condition returns hundreds of assets ×
+// indications). It is memoized on the landscape/condition so that typing in the
+// search box — which changes only the parent's `input` state — does not re-render
+// this whole table on every keystroke (which froze the browser).
+const LandscapeMatrix = memo(function LandscapeMatrix({
+  landscape,
+  condition,
+}: {
+  landscape: Landscape;
+  condition: string;
+}) {
+  const { assets, indications, cellByKey, truncated } = useMemo(() => {
+    const assets = landscape.assets.slice(0, MAX_ASSETS);
+    const shown = new Set(assets);
+    const cellByKey = new Map<string, LandscapeCell>();
+    const usedIndications = new Set<string>();
+    for (const c of landscape.cells ?? []) {
+      if (!shown.has(c.asset_name)) continue;
+      cellByKey.set(`${c.asset_name}|${c.indication}`, c);
+      usedIndications.add(c.indication);
+    }
+    const indications = landscape.indications.filter((ind) => usedIndications.has(ind));
+    return { assets, indications, cellByKey, truncated: landscape.assets.length > MAX_ASSETS };
+  }, [landscape]);
+
+  return (
+    <div className="overflow-x-auto rounded-md hairline bg-surface-container-low">
+      {truncated && (
+        <p className="px-3 py-2 text-[12px] text-ink-muted-light">
+          Showing the first {MAX_ASSETS} of {landscape.assets.length} assets — narrow the
+          condition to focus the matrix.
+        </p>
+      )}
+      <table className="min-w-[720px] w-full border-collapse" data-testid="landscape-matrix">
+        <thead>
+          <tr>
+            <th className="sticky left-0 z-10 bg-surface-container-low p-3 text-left text-label-caps uppercase text-ink-muted-light">
+              Asset
+            </th>
+            {indications.map((ind) => (
+              <th
+                key={ind}
+                className="p-3 text-left text-label-caps uppercase text-ink-muted-light"
+              >
+                {ind}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {assets.map((asset) => (
+            <tr key={asset} className="hairline-t align-top">
+              <td className="sticky left-0 z-10 bg-surface-container-low p-3 text-[13px] font-medium text-ink-light">
+                {asset}
+              </td>
+              {indications.map((ind) => {
+                const cell = cellByKey.get(`${asset}|${ind}`);
+                return (
+                  <td key={ind} className="p-2">
+                    {cell ? (
+                      <Cell cell={cell} condition={condition} />
+                    ) : (
+                      <span className="text-[12px] text-outline-variant">n/a</span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+});
+
 export function CompetitorLandscape() {
   const [input, setInput] = useState("Obesity");
   const [condition, setCondition] = useState("Obesity");
@@ -57,12 +138,6 @@ export function CompetitorLandscape() {
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condition, year]);
-
-  const cellByKey = useMemo(() => {
-    const map = new Map<string, LandscapeCell>();
-    for (const c of landscape?.cells ?? []) map.set(`${c.asset_name}|${c.indication}`, c);
-    return map;
-  }, [landscape]);
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-10">
@@ -136,46 +211,7 @@ export function CompetitorLandscape() {
       )}
 
       {landscape && landscape.assets.length > 0 && (
-        <div className="overflow-x-auto rounded-md hairline bg-surface-container-low">
-          <table className="min-w-[720px] w-full border-collapse" data-testid="landscape-matrix">
-            <thead>
-              <tr>
-                <th className="sticky left-0 z-10 bg-surface-container-low p-3 text-left text-label-caps uppercase text-ink-muted-light">
-                  Asset
-                </th>
-                {landscape.indications.map((ind) => (
-                  <th
-                    key={ind}
-                    className="p-3 text-left text-label-caps uppercase text-ink-muted-light"
-                  >
-                    {ind}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {landscape.assets.map((asset) => (
-                <tr key={asset} className="hairline-t align-top">
-                  <td className="sticky left-0 z-10 bg-surface-container-low p-3 text-[13px] font-medium text-ink-light">
-                    {asset}
-                  </td>
-                  {landscape.indications.map((ind) => {
-                    const cell = cellByKey.get(`${asset}|${ind}`);
-                    return (
-                      <td key={ind} className="p-2">
-                        {cell ? (
-                          <Cell cell={cell} condition={condition} />
-                        ) : (
-                          <span className="text-[12px] text-outline-variant">n/a</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <LandscapeMatrix landscape={landscape} condition={condition} />
       )}
 
       <p className="mt-4 flex items-center gap-2 text-[12px] text-ink-muted-light">
