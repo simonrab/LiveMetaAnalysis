@@ -66,36 +66,53 @@ export function Ask() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-10">
+    <div
+      className={`mx-auto flex max-w-2xl flex-col items-center px-6 text-center ${
+        parsed ? "pt-16 pb-20" : "min-h-[82vh] justify-center pb-16"
+      }`}
+    >
       <p className="text-label-caps uppercase text-ink-muted-light">
-        New living review
+        Living evidence review
       </p>
-      <h1 className="mt-2 font-sans text-display-lg text-ink-light">
-        Ask a clinical question
+      <h1 className="mt-3 font-sans text-display-lg text-ink-light">
+        What question should we synthesize evidence for?
       </h1>
 
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={3}
-        aria-label="Clinical question"
-        placeholder="e.g. In adults with type 2 diabetes, do GLP-1 receptor agonists reduce MACE versus placebo?"
-        className="mt-6 w-full rounded-md hairline bg-card-light p-4 text-[18px] leading-7 text-ink-light outline-none focus:border-accent"
-      />
-
-      <div className="mt-3 flex items-center gap-4">
-        <button
-          onClick={parse}
-          disabled={!text.trim() || parsing}
-          className="rounded-sm hairline px-4 py-2 text-[13px] font-medium text-ink-light hover:bg-surface-container-high disabled:opacity-40"
-        >
-          {parsing ? "Parsing…" : "Parse into PICO"}
-        </button>
-        {error && <span className="font-mono text-[12px] text-risk-high">{error}</span>}
+      {/* Chat-style prompt: a single prominent, centered input with an inline send. */}
+      <div className="mt-8 w-full">
+        <div className="relative rounded-2xl hairline bg-card-light shadow-sm transition-colors focus-within:border-accent">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) parse();
+            }}
+            rows={4}
+            aria-label="Clinical question"
+            placeholder="e.g. In adults with type 2 diabetes, do GLP-1 receptor agonists reduce MACE versus placebo?"
+            className="max-h-64 w-full resize-none overflow-y-auto rounded-2xl bg-transparent p-4 pr-14 text-left text-[16px] leading-7 text-ink-light outline-none placeholder:text-ink-muted-light"
+          />
+          <button
+            onClick={parse}
+            disabled={!text.trim() || parsing}
+            aria-label="Parse into PICO"
+            title="Parse into PICO (⌘↵)"
+            className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-accent text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Icon name={parsing ? "more_horiz" : "arrow_upward"} size={18} />
+          </button>
+        </div>
+        <p className="mt-3 text-[12px] text-ink-muted-light">
+          Structured as PICO into a living meta-analysis of published trials — a
+          research tool, not medical advice.
+        </p>
+        {error && (
+          <p className="mt-2 font-mono text-[12px] text-risk-high">{error}</p>
+        )}
       </div>
 
       {parsed && (
-        <div className="mt-8 rounded-md hairline bg-card-light p-6">
+        <div className="mt-10 w-full rounded-md hairline bg-card-light p-6 text-left">
           <p className="text-label-caps uppercase text-ink-muted-light">
             Parsed PICO · edit any field before running
           </p>

@@ -60,6 +60,9 @@ describe("AssetDossier", () => {
     expect(screen.getByText("Obesity + established CVD")).toBeInTheDocument();
     expect(screen.getByText(/OZEMPIC/)).toBeInTheDocument();
     expect(screen.getByText("NDA209637")).toBeInTheDocument();
+    // Approvals come from openFDA (US FDA only) — flag the scope so absence isn't
+    // read as "not approved anywhere".
+    expect(screen.getByText(/US FDA only/i)).toBeInTheDocument();
     expect(screen.getByText(/United States/)).toBeInTheDocument();
     // pooled evidence badge from the sub-indication
     expect(screen.getByTestId("evidence-pooled")).toHaveTextContent("HR 0.80 [0.72, 0.90]");

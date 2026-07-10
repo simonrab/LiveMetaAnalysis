@@ -194,9 +194,15 @@ export function AssetDossier() {
           </Section>
 
           <Section title="Regulatory approvals" icon="verified">
+            <p className="mb-2 text-[12px] text-ink-muted-light">
+              <Icon name="flag" size={13} className="mr-1 align-[-2px] text-ink-muted-light" />
+              Source: openFDA — <span className="font-medium text-ink-light">US FDA only</span>.
+              Absence here does not imply the drug is unapproved elsewhere (e.g. EMA, PMDA).
+            </p>
             {dossier.approvals.length === 0 ? (
               <p className="text-[13px] text-ink-muted-light">
-                No approvals found{sources.includes("openfda") ? "." : " (openFDA source is off)."}
+                No US FDA approvals found
+                {sources.includes("openfda") ? "." : " (openFDA source is off)."}
               </p>
             ) : (
               <ul className="space-y-1">

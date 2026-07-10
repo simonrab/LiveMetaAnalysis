@@ -437,7 +437,7 @@ export const FREE_TEXT_SOURCES: Source[] = ["announcement", "filing"];
 export const SOURCE_LABEL: Record<Source, string> = {
   ctgov: "ClinicalTrials.gov",
   pubmed: "PubMed / Europe PMC",
-  openfda: "openFDA (approvals)",
+  openfda: "openFDA (US FDA approvals)",
   announcement: "Announcements",
   filing: "Filings",
 };
