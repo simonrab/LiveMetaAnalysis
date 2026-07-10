@@ -52,7 +52,13 @@ function AssetCard({ cell, condition }: { cell: LandscapeCell; condition: string
   return (
     <div className="rounded-md hairline bg-card-light p-2.5" data-testid="asset-card">
       <div className="flex items-start justify-between gap-1">
-        <p className="text-[13px] font-medium leading-tight text-ink-light">{cell.asset_name}</p>
+        <Link
+          to={`/asset/${encodeURIComponent(cell.asset_name)}`}
+          className="text-[13px] font-medium leading-tight text-ink-light hover:text-accent hover:underline"
+          title={`Full dossier — every trial for ${cell.asset_name} across indications`}
+        >
+          {cell.asset_name}
+        </Link>
         {cell.conflict && (
           <span title={cell.conflict_note ?? "Sources disagree on the current stage"}>
             <Icon name="warning" size={14} className="text-risk-some" label="source conflict" />

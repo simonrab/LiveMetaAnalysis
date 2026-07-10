@@ -68,6 +68,19 @@ describe("AssetDossier", () => {
     expect(screen.getByTestId("evidence-pooled")).toHaveTextContent("HR 0.80 [0.72, 0.90]");
   });
 
+  it("links each approval out to its Drugs@FDA source page", async () => {
+    vi.mocked(getAssetDossier).mockResolvedValue(dossier);
+    renderPage();
+    const link = await screen.findByRole("link", { name: /NDA209637/ });
+    // Drugs@FDA overview page keyed by the numeric application number.
+    expect(link).toHaveAttribute(
+      "href",
+      "https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo=209637"
+    );
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+  });
+
   it("shows a source toggle", async () => {
     vi.mocked(getAssetDossier).mockResolvedValue(dossier);
     renderPage();

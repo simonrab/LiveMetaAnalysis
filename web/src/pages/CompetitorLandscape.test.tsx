@@ -108,6 +108,24 @@ describe("CompetitorLandscape", () => {
     expect(screen.getByTestId("evidence-gate")).toBeInTheDocument();
   });
 
+  it("links the card name to the full asset dossier and keeps the condition timeline chip", async () => {
+    vi.mocked(getLandscape).mockResolvedValue(landscape);
+    renderPage();
+    const phase3 = await screen.findByTestId("phase-col-phase_3");
+
+    // The drug name opens the cross-indication dossier.
+    const dossierLink = within(phase3).getByRole("link", { name: "Semaglutide" });
+    expect(dossierLink).toHaveAttribute("href", "/asset/Semaglutide");
+
+    // The small Timeline chip still points at the condition-scoped timeline
+    // (the board's active condition, which defaults to Obesity).
+    const timelineLink = within(phase3).getByRole("link", { name: /Timeline/ });
+    expect(timelineLink).toHaveAttribute(
+      "href",
+      "/landscape/asset/Semaglutide?condition=Obesity"
+    );
+  });
+
   it("flags a card where sources conflict", async () => {
     vi.mocked(getLandscape).mockResolvedValue(landscape);
     renderPage();

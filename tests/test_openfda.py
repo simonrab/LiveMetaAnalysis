@@ -43,6 +43,11 @@ def test_parses_approvals_with_earliest_ap_date():
     assert ozempic.marketing_status == "Prescription"
     assert ozempic.indication_approx is None  # openFDA has no indication text
     assert ozempic.provenance[0].trial_id == "NDA209637"
+    # Provenance points at the human-facing Drugs@FDA page, not the raw API JSON.
+    assert ozempic.provenance[0].source_url == (
+        "https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm"
+        "?event=overview.process&ApplNo=209637"
+    )
 
 
 @respx.mock

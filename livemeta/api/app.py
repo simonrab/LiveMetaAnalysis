@@ -437,11 +437,15 @@ def get_landscape(
     )
 
 
-@app.get("/api/landscape/asset/{name}", response_model=list[DevelopmentEvent])
+@app.get("/api/landscape/asset/{name:path}", response_model=list[DevelopmentEvent])
 def get_asset_timeline(
     name: str, condition: str, store: SnapshotStore = Depends(get_store)
 ) -> list[DevelopmentEvent]:
-    """One asset's dated development history for the drill-in view."""
+    """One asset's dated development history for the drill-in view.
+
+    `{name:path}` so combination therapies whose name carries a slash (e.g.
+    Naltrexone/Bupropion), URL-encoded to %2F and decoded back to a real slash,
+    still resolve here instead of falling through to the SPA fallback."""
     return ci_service.asset_timeline(store, condition, name)
 
 

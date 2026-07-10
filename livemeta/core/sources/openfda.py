@@ -59,6 +59,19 @@ def _marketing_status(result: dict) -> str | None:
     return products[0].get("marketing_status") if products else None
 
 
+def _drugs_at_fda_url(application_number: str) -> str:
+    """The human-facing Drugs@FDA overview page for an application, keyed by the
+    numeric part of the application number (e.g. NDA209637 -> ApplNo=209637).
+    Falls back to the Drugs@FDA landing page when no digits are present."""
+    appl_no = "".join(c for c in application_number if c.isdigit())
+    if not appl_no:
+        return "https://www.accessdata.fda.gov/scripts/cder/daf/"
+    return (
+        "https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm"
+        f"?event=overview.process&ApplNo={appl_no}"
+    )
+
+
 class OpenFdaClient:
     def __init__(self, base_url: str = BASE_URL, timeout: float = 30.0):
         self._base = base_url
@@ -100,7 +113,7 @@ class OpenFdaClient:
                                 f"{drug} — {app_no} "
                                 f"({', '.join(_brand_names(result)) or 'no brand'})"
                             ),
-                            source_url="https://api.fda.gov/drug/drugsfda.json",
+                            source_url=_drugs_at_fda_url(app_no),
                             field="openfda.drugsfda",
                         )
                     ],

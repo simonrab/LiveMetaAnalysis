@@ -89,6 +89,33 @@ def test_asset_timeline_endpoint(client):
     assert events and all(e["asset_name"] == "Semaglutide" for e in events)
 
 
+def test_asset_timeline_handles_slash_in_name(tmp_path):
+    # Combination therapies carry a slash in the asset name (e.g. Contrave =
+    # Naltrexone/Bupropion). The drill-in link URL-encodes it to %2F, which
+    # decodes back to a real slash server-side; the route must still resolve it
+    # rather than fall through to the SPA fallback and break the timeline page.
+    store = SnapshotStore(data_dir=tmp_path)
+    studies = [
+        _study(nct="NCT-C", conditions=("Obesity",),
+               interventions=(("DRUG", "Naltrexone/Bupropion"),)),
+    ]
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_ci_search] = lambda: (lambda condition: studies)
+    try:
+        c = TestClient(app)
+        c.get("/api/landscape", params={"condition": "Obesity"})
+        r = c.get(
+            "/api/landscape/asset/Naltrexone%2FBupropion",
+            params={"condition": "Obesity"},
+        )
+        assert r.status_code == 200
+        events = r.json()
+        assert events and all(e["asset_name"] == "Naltrexone/Bupropion" for e in events)
+    finally:
+        app.dependency_overrides.pop(get_store, None)
+        app.dependency_overrides.pop(get_ci_search, None)
+
+
 def test_link_endpoint_attaches_question_id(client):
     client.get("/api/landscape", params={"condition": "Type 2 Diabetes"})
     r = client.post(
