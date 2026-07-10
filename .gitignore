@@ -21,5 +21,6 @@ __pycache__/
 
 # Node / build artifacts
 node_modules/
-static_web/
 web/dist/
+# static_web/ is the built SPA the backend serves; it must be uploaded by
+# `railway up` (which honours .gitignore), so it is intentionally not ignored.
