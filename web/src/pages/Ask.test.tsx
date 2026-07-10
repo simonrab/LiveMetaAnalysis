@@ -56,7 +56,7 @@ describe("Ask (dynamic PICO)", () => {
     expect(screen.getByRole("button", { name: /Run review/i })).toBeInTheDocument();
   });
 
-  it("seeds the demo question once but lets you clear it and type a new one", async () => {
+  it("starts empty even when a previous review is loaded — no autofill", async () => {
     reviewState = {
       question: {
         id: "glp1-mace",
@@ -75,11 +75,7 @@ describe("Ask (dynamic PICO)", () => {
     );
 
     const box = screen.getByLabelText("Clinical question");
-    // Seeded once for convenience...
-    expect(box).toHaveValue("Demo MACE question?");
-
-    // ...but clearing it must NOT snap back to the demo question.
-    await userEvent.clear(box);
+    // A fresh Ask never inherits the previous review's question.
     expect(box).toHaveValue("");
 
     await userEvent.type(box, "A brand new question?");

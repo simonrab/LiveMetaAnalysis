@@ -111,6 +111,14 @@ export function Sidebar() {
       </nav>
 
       <div className="hairline-t mx-3 mt-auto space-y-1 px-0 pt-4">
+        <NavLink to="/how-it-works" className={({ isActive }) => item(isActive)}>
+          {({ isActive }) => (
+            <>
+              <Icon name="menu_book" size={18} fill={isActive} />
+              <span>How it works</span>
+            </>
+          )}
+        </NavLink>
         <button
           type="button"
           onClick={toggleTheme}

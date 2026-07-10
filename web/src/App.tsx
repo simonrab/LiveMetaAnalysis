@@ -18,6 +18,7 @@ import { CompetitorLandscape } from "./pages/CompetitorLandscape";
 import { AssetProfile } from "./pages/AssetProfile";
 import { AssetDossier } from "./pages/AssetDossier";
 import { IndicationMap } from "./pages/IndicationMap";
+import { HowItWorks } from "./pages/HowItWorks";
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/ask" element={<Ask />} />
+              <Route path="/how-it-works" element={<HowItWorks />} />
               <Route path="/landscape" element={<CompetitorLandscape />} />
               <Route path="/landscape/asset/:name" element={<AssetProfile />} />
               <Route path="/asset/:name" element={<AssetDossier />} />
