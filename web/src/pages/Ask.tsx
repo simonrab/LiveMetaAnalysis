@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useReview } from "../lib/review";
 import { parseQuestion } from "../lib/api";
@@ -23,24 +23,13 @@ const MEASURES = [
 ] as const;
 
 export function Ask() {
-  const { question, start } = useReview();
+  const { start } = useReview();
   const navigate = useNavigate();
 
   const [text, setText] = useState("");
   const [parsed, setParsed] = useState<Question | null>(null);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Seed the box with the demo question *once* so the demo is one click away —
-  // but never re-seed, or clearing the box to type a fresh question would snap
-  // straight back to the demo text.
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (question && !seeded.current) {
-      setText(question.text);
-      seeded.current = true;
-    }
-  }, [question]);
 
   const parse = async () => {
     setParsing(true);

@@ -28,6 +28,10 @@ export function ProvenancePopover({ provenance }: { provenance: Provenance[] }) 
               href={first.source_url}
               target="_blank"
               rel="noreferrer"
+              // Prevent the trigger button's onBlur from firing before this
+              // click: without it, blur closes the popover and unmounts the
+              // link mid-click, so the navigation never happens.
+              onMouseDown={(e) => e.preventDefault()}
               className="mt-2 block font-mono text-[10px] uppercase tracking-wider text-accent"
             >
               {first.trial_id} · open source ↗
