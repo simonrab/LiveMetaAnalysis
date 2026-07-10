@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
 
-// How Strata works — the trust story made visible. Every visual on this page
+// How Strata works: the trust story made visible. Every visual on this page
 // restates the same rule from a different angle: Claude reads, deterministic
 // code computes, a human confirms, and nothing enters the pool without a
 // source and a passing validation check. Static content only: no backend
@@ -45,7 +45,7 @@ const ACTORS = [
   {
     role: "claude" as Role,
     title: "Claude",
-    body: "Reads and structures the evidence — trial records, arm-level effect data, bias signals. Strong at reading. Never trusted with arithmetic.",
+    body: "Reads and structures the evidence: trial records, arm-level effect data, bias signals. Strong at reading. Never trusted with arithmetic.",
   },
   {
     role: "code" as Role,
@@ -55,7 +55,7 @@ const ACTORS = [
   {
     role: "human" as Role,
     title: "You",
-    body: "Confirms the load-bearing judgments — uncertain extractions and risk-of-bias calls — before they count. The audit trail records every decision.",
+    body: "Confirms the load-bearing judgments (uncertain extractions and risk-of-bias calls) before they count. The audit trail records every decision.",
   },
 ];
 
@@ -74,7 +74,7 @@ const STAGES: { title: string; desc: string; roles: Role[] }[] = [
   },
   {
     title: "Extract",
-    desc: "Events and totals per arm, read into a fixed schema. Every value carries the exact sentence it came from — or comes back null and flags the trial.",
+    desc: "Events and totals per arm, read into a fixed schema. Every value carries the exact sentence it came from, or comes back null and flags the trial.",
     roles: ["claude"],
   },
   {
@@ -84,7 +84,7 @@ const STAGES: { title: string; desc: string; roles: Role[] }[] = [
   },
   {
     title: "Appraise",
-    desc: "Risk of bias (RoB 2) per trial and certainty (GRADE) per outcome — each judgment with a source quote, confirmed by a human.",
+    desc: "Risk of bias (RoB 2) per trial and certainty (GRADE) per outcome, each judgment with a source quote, confirmed by a human.",
     roles: ["claude", "human"],
   },
   {
@@ -204,14 +204,14 @@ function ValidationGateDemo() {
         <div className="flex items-center gap-2.5 rounded-md border border-risk-low bg-risk-low-container px-4 py-3">
           <Icon name="check_circle" size={18} className="text-risk-low" />
           <div>
-            <p className="text-[13px] font-medium text-ink-light">Passes — enters the pool</p>
+            <p className="text-[13px] font-medium text-ink-light">Passes: enters the pool</p>
           </div>
         </div>
         <div className="flex items-center gap-2.5 rounded-md border border-risk-some bg-risk-some-container px-4 py-3">
           <Icon name="flag" size={18} className="text-risk-some" />
           <div>
             <p className="text-[13px] font-medium text-ink-light">
-              Fails — flagged for your review, never pooled
+              Fails: flagged for your review, never pooled
             </p>
           </div>
         </div>
@@ -273,7 +273,7 @@ function LivingDemo() {
       <div className="flex items-center gap-2 pl-4 text-ink-muted-light">
         <Icon name="sync" size={16} className="text-accent" />
         <span className="text-[12px]">
-          A new trial reads out — the review re-pools itself and diffs the answer
+          A new trial reads out, and the review re-pools itself and diffs the answer
         </span>
       </div>
 
@@ -364,6 +364,8 @@ function MiniCard({
   );
 }
 
+// Illustrative placeholders, not real assets: the point of the visual is the
+// three evidence states, not any particular drug or standing.
 const BOARD: {
   phase: string;
   cards: { asset: string; sponsor: string; badge: BadgeState; highlight?: boolean }[];
@@ -372,8 +374,8 @@ const BOARD: {
     phase: "Phase 2",
     cards: [
       {
-        asset: "Orforglipron",
-        sponsor: "Eli Lilly",
+        asset: "Therapy D",
+        sponsor: "Sponsor 3",
         badge: { kind: "abstained", text: "Evidence abstained" },
       },
     ],
@@ -382,13 +384,13 @@ const BOARD: {
     phase: "Phase 3",
     cards: [
       {
-        asset: "Retatrutide",
-        sponsor: "Eli Lilly",
+        asset: "Therapy C",
+        sponsor: "Sponsor 2",
         badge: { kind: "gate", text: "Gate · pending confirmation" },
       },
       {
-        asset: "Tirzepatide",
-        sponsor: "Eli Lilly",
+        asset: "Therapy B",
+        sponsor: "Sponsor 2",
         badge: { kind: "pooled", text: "RR 0.78 [0.64, 0.94]", accent: true },
         highlight: true,
       },
@@ -398,8 +400,8 @@ const BOARD: {
     phase: "Approved",
     cards: [
       {
-        asset: "Semaglutide",
-        sponsor: "Novo Nordisk",
+        asset: "Therapy A",
+        sponsor: "Sponsor 1",
         badge: { kind: "pooled", text: "RR 0.86 [0.79, 0.94]", accent: true },
       },
     ],
@@ -438,21 +440,21 @@ function LandscapeDemo() {
         <div className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-muted-light">
           <span className="mt-1.5 h-2 w-2 shrink-0 rounded-sm bg-risk-low" />
           <span>
-            <span className="font-medium text-ink-light">Pooled estimate</span> — the committed
+            <span className="font-medium text-ink-light">Pooled estimate</span>: the committed
             effect and GRADE certainty, clickable through to the full review.
           </span>
         </div>
         <div className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-muted-light">
           <span className="mt-1.5 h-2 w-2 shrink-0 rounded-sm bg-risk-some" />
           <span>
-            <span className="font-medium text-ink-light">Gate pending</span> — pooling withheld
+            <span className="font-medium text-ink-light">Gate pending</span>: pooling withheld
             until a reviewer confirms the trials are similar enough to combine.
           </span>
         </div>
         <div className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-muted-light">
           <span className="mt-1.5 h-2 w-2 shrink-0 rounded-sm bg-outline" />
           <span>
-            <span className="font-medium text-ink-light">Abstained</span> — too few trials or no
+            <span className="font-medium text-ink-light">Abstained</span>: too few trials or no
             poolable data. Never a fabricated number.
           </span>
         </div>
@@ -460,7 +462,7 @@ function LandscapeDemo() {
 
       <p className="flex items-start gap-2 rounded-md border border-accent-border bg-accent-container/40 px-3 py-2.5 text-[13px] leading-relaxed text-ink-light">
         <Icon name="insights" size={16} className="mt-0.5 shrink-0 text-accent" />
-        One new trial moves both the pooled estimate and the competitive standing at once — which
+        One new trial moves both the pooled estimate and the competitive standing at once, which
         is why the engine and the landscape are one system, not two tools.
       </p>
     </div>
@@ -471,7 +473,7 @@ function LandscapeDemo() {
 
 const REFUSALS = [
   "Claude never computes a pooled estimate. All statistics run in a validated library, never in the model.",
-  "No silent inference. A value that is not clearly present comes back null and flags the trial — never back-calculated.",
+  "No silent inference. A value that is not clearly present comes back null and flags the trial, never back-calculated.",
   "Unlike trials are not pooled. Clinical homogeneity is confirmed, not assumed.",
   "When data is thin or heterogeneity is high, the tool abstains rather than invent precision.",
   "Rare events change the method (Peto or Mantel–Haenszel) or stop the pool. No silent zero-cell corrections.",
@@ -509,8 +511,8 @@ export function HowItWorks() {
           stays current because the evidence underneath it does. One rule holds it together:{" "}
           <span className="font-medium text-ink-light">
             pool only numbers that can be traced to a source and pass validation
-          </span>{" "}
-          — and say what was excluded, and why.
+          </span>
+          , and say what was excluded, and why.
         </p>
       </div>
 
@@ -531,7 +533,7 @@ export function HowItWorks() {
         <Section
           label="The pipeline"
           title="The pipeline"
-          lead="Seven stages from question to living answer. The chips show who is trusted with each one — the model never touches a stage that involves arithmetic."
+          lead="Seven stages from question to living answer. The chips show who is trusted with each one; the model never touches a stage that involves arithmetic."
         >
           <Pipeline />
         </Section>
@@ -547,7 +549,7 @@ export function HowItWorks() {
         <Section
           label="The validation gate"
           title="The validation gate"
-          lead="Plain code — not the model — checks every extraction before pooling. There is no third exit: a number either passes or waits for a human."
+          lead="Plain code, not the model, checks every extraction before pooling. There is no third exit: a number either passes or waits for a human."
         >
           <ValidationGateDemo />
         </Section>
@@ -555,7 +557,7 @@ export function HowItWorks() {
         <Section
           label="The living layer"
           title="The answer never goes stale"
-          lead="A published meta-analysis is out of date the moment it prints. Here, a new readout triggers a re-pool, and the diff tells you whether the estimate — or the conclusion — moved."
+          lead="A published meta-analysis is out of date the moment it prints. Here, a new readout triggers a re-pool, and the diff tells you whether the estimate, or the conclusion, moved."
         >
           <LivingDemo />
         </Section>
@@ -563,7 +565,7 @@ export function HowItWorks() {
         <Section
           label="The competitive landscape"
           title="From one answer to the whole race"
-          lead="Those living answers roll up into a competitive board: assets mapped by development phase, indication, and time. Unlike an ordinary intelligence dashboard, every cell is backed by that same pooled, auditable evidence — so you see who is ahead on the actual data, not just who is in the race."
+          lead="Those living answers roll up into a competitive board: assets mapped by development phase, indication, and time. Unlike an ordinary intelligence dashboard, every cell is backed by that same pooled, auditable evidence, so you see who is ahead on the actual data, not just who is in the race."
         >
           <LandscapeDemo />
         </Section>
