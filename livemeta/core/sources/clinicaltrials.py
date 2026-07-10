@@ -117,11 +117,17 @@ class ClinicalTrialsClient:
         The competitive-intelligence sibling of `search_studies`: it keeps the
         full structured record so the CI parser can read sponsor / phase / status
         / dates / interventions, which `search_studies` deliberately strips.
+
+        Scoped by `query.cond` (the studied condition), not the free-text
+        `query.term`: the landscape asks "what is in development *for* this
+        condition", so a trial that merely mentions the condition as a comorbidity
+        or exclusion (e.g. a saline study that enrols obese patients) must not be
+        pulled in. This matches `search_by_condition`, used for the indication map.
         """
         resp = httpx.get(
             f"{self._base}/studies",
             params={
-                "query.term": query,
+                "query.cond": query,
                 "pageSize": page_size,
                 "fields": self._PIPELINE_FIELDS,
             },

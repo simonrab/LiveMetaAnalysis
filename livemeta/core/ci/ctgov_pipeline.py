@@ -32,8 +32,22 @@ _PHASE_MAP: dict[frozenset[str], Phase] = {
 # Statuses that mean the trial has read out (so a READOUT event is warranted).
 _COMPLETED_STATUSES = {"COMPLETED", "TERMINATED"}
 
-# Intervention arms that are not the asset under study.
-_NON_ASSET_NAMES = {"placebo", "standard of care", "control", "sham", "best supportive care"}
+# Intervention arms that are not the asset under study — placebos, controls, and
+# vehicles/diluents that show up as DRUG arms but carry no active competitor.
+_NON_ASSET_NAMES = {
+    "placebo",
+    "standard of care",
+    "control",
+    "sham",
+    "best supportive care",
+    "saline",
+    "normal saline",
+    "0.9% normal saline",
+    "0.9% sodium chloride",
+    "sodium chloride",
+    "vehicle",
+    "diluent",
+}
 
 
 def _protocol(study: dict) -> dict:

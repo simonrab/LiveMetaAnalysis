@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getLandscape } from "../lib/api";
-import type { Landscape, LandscapeCell } from "../lib/types";
+import type { Landscape, LandscapeCell, Phase } from "../lib/types";
 import { Icon } from "../components/Icon";
 import { StagePill } from "../components/StagePill";
 import { EvidenceBadgeView } from "../components/EvidenceBadgeView";
@@ -9,25 +9,61 @@ import { EvidenceBadgeView } from "../components/EvidenceBadgeView";
 const MIN_YEAR = 2008;
 const MAX_YEAR = new Date().getFullYear();
 
-// A broad condition (e.g. "Obesity") can return ~1000 assets × hundreds of
-// indications. Rendering that full matrix is hundreds of thousands of cells,
-// which freezes the browser. Cap the rows and show only the indications those
-// rows actually use, with a note to narrow the search.
-const MAX_ASSETS = 50;
+// Development phases in ascending order of advancement. This is the board's
+// column axis: fixed, ordered, and dense — every asset sits in exactly one of
+// these, so (unlike the old asset × indication matrix) there is no blank space.
+const PHASE_ORDER: Phase[] = [
+  "preclinical",
+  "phase_1",
+  "phase_1_2",
+  "phase_2",
+  "phase_2_3",
+  "phase_3",
+  "phase_4",
+  "filed",
+  "approved",
+  "withdrawn",
+  "unknown",
+];
 
-function Cell({ cell, condition }: { cell: LandscapeCell; condition: string }) {
+// How advanced each phase is, used to rank cards when capping so the late-stage
+// competitors that matter are never dropped. Distinct from PHASE_ORDER (column
+// layout): here withdrawn/unknown rank lowest so a flood of phase-untagged
+// trials can't crowd out the real Phase 2/3/approved programs.
+const ADVANCEMENT_RANK: Record<Phase, number> = {
+  approved: 9,
+  filed: 8,
+  phase_4: 7,
+  phase_3: 6,
+  phase_2_3: 5,
+  phase_2: 4,
+  phase_1_2: 3,
+  phase_1: 2,
+  preclinical: 1,
+  withdrawn: 0,
+  unknown: -1,
+};
+
+// A broad condition (e.g. "Obesity") can return ~1000 assets. Cap the number of
+// cards so the board stays responsive, keeping the most advanced first.
+const MAX_CARDS = 120;
+
+function AssetCard({ cell, condition }: { cell: LandscapeCell; condition: string }) {
   return (
-    <div className="rounded-sm hairline bg-card-light p-2">
+    <div className="rounded-md hairline bg-card-light p-2.5" data-testid="asset-card">
       <div className="flex items-start justify-between gap-1">
-        <StagePill phase={cell.current_phase} />
+        <p className="text-[13px] font-medium leading-tight text-ink-light">{cell.asset_name}</p>
         {cell.conflict && (
           <span title={cell.conflict_note ?? "Sources disagree on the current stage"}>
             <Icon name="warning" size={14} className="text-risk-some" label="source conflict" />
           </span>
         )}
       </div>
+      <p className="mt-1 truncate text-[11px] text-ink-muted-light" title={cell.indication}>
+        {cell.indication}
+      </p>
       {cell.sponsor && (
-        <p className="mt-1 truncate text-[10px] text-ink-muted-light" title={cell.sponsor}>
+        <p className="truncate text-[10px] text-ink-muted-light" title={cell.sponsor}>
           {cell.sponsor}
         </p>
       )}
@@ -42,85 +78,161 @@ function Cell({ cell, condition }: { cell: LandscapeCell; condition: string }) {
   );
 }
 
-// The matrix can be enormous (a broad condition returns hundreds of assets ×
-// indications). It is memoized on the landscape/condition so that typing in the
-// search box — which changes only the parent's `input` state — does not re-render
-// this whole table on every keystroke (which froze the browser).
-const LandscapeMatrix = memo(function LandscapeMatrix({
+// The board is memoized on landscape/condition/indication so that typing in the
+// search box (which changes only the parent's `input` state) does not re-render
+// the whole board on every keystroke.
+const PipelineBoard = memo(function PipelineBoard({
   landscape,
   condition,
+  indication,
 }: {
   landscape: Landscape;
   condition: string;
+  indication: string | null;
 }) {
-  const { assets, indications, cellByKey, truncated } = useMemo(() => {
-    const assets = landscape.assets.slice(0, MAX_ASSETS);
-    const shown = new Set(assets);
-    const cellByKey = new Map<string, LandscapeCell>();
-    const usedIndications = new Set<string>();
-    for (const c of landscape.cells ?? []) {
-      if (!shown.has(c.asset_name)) continue;
-      cellByKey.set(`${c.asset_name}|${c.indication}`, c);
-      usedIndications.add(c.indication);
+  const { columns, truncated, total } = useMemo(() => {
+    const cells = (landscape.cells ?? []).filter(
+      (c) => indication === null || c.indication === indication
+    );
+    const total = cells.length;
+    // Keep the most-advanced cells first when capping, so the cap never hides
+    // the late-stage competitors that matter most.
+    const shown = [...cells]
+      .sort((a, b) => ADVANCEMENT_RANK[b.current_phase] - ADVANCEMENT_RANK[a.current_phase])
+      .slice(0, MAX_CARDS);
+
+    const byPhase = new Map<Phase, LandscapeCell[]>();
+    for (const c of shown) {
+      const list = byPhase.get(c.current_phase) ?? [];
+      list.push(c);
+      byPhase.set(c.current_phase, list);
     }
-    const indications = landscape.indications.filter((ind) => usedIndications.has(ind));
-    return { assets, indications, cellByKey, truncated: landscape.assets.length > MAX_ASSETS };
-  }, [landscape]);
+    // Only render columns that actually hold an asset, in phase order.
+    const columns = PHASE_ORDER.filter((p) => byPhase.has(p)).map((phase) => ({
+      phase,
+      cells: byPhase.get(phase)!.sort((a, b) => a.asset_name.localeCompare(b.asset_name)),
+    }));
+    return { columns, truncated: total > MAX_CARDS, total };
+  }, [landscape, indication]);
+
+  if (columns.length === 0) {
+    return (
+      <div className="rounded-md hairline bg-card-light p-8 text-center text-[14px] text-ink-muted-light">
+        No assets in {indication} for this condition{" "}
+        {landscape.as_of ? `as of ${landscape.as_of}.` : "."}
+      </div>
+    );
+  }
 
   return (
-    <div className="overflow-x-auto rounded-md hairline bg-surface-container-low">
+    <div className="rounded-md hairline bg-surface-container-low p-3">
       {truncated && (
-        <p className="px-3 py-2 text-[12px] text-ink-muted-light">
-          Showing the first {MAX_ASSETS} of {landscape.assets.length} assets — narrow the
-          condition to focus the matrix.
+        <p className="mb-2 px-1 text-[12px] text-ink-muted-light">
+          Showing the {MAX_CARDS} most-advanced of {total} programs — narrow the condition or
+          filter by indication to focus.
         </p>
       )}
-      <table className="min-w-[720px] w-full border-collapse" data-testid="landscape-matrix">
-        <thead>
-          <tr>
-            <th className="sticky left-0 z-10 bg-surface-container-low p-3 text-left text-label-caps uppercase text-ink-muted-light">
-              Asset
-            </th>
-            {indications.map((ind) => (
-              <th
-                key={ind}
-                className="p-3 text-left text-label-caps uppercase text-ink-muted-light"
-              >
-                {ind}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {assets.map((asset) => (
-            <tr key={asset} className="hairline-t align-top">
-              <td className="sticky left-0 z-10 bg-surface-container-low p-3 text-[13px] font-medium text-ink-light">
-                {asset}
-              </td>
-              {indications.map((ind) => {
-                const cell = cellByKey.get(`${asset}|${ind}`);
-                return (
-                  <td key={ind} className="p-2">
-                    {cell ? (
-                      <Cell cell={cell} condition={condition} />
-                    ) : (
-                      <span className="text-[12px] text-outline-variant">n/a</span>
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="flex gap-3 overflow-x-auto pb-1" data-testid="pipeline-board">
+        {columns.map(({ phase, cells }) => (
+          <div
+            key={phase}
+            data-testid={`phase-col-${phase}`}
+            className="flex w-56 shrink-0 flex-col"
+          >
+            <div className="mb-2 flex items-center justify-between px-1">
+              <StagePill phase={phase} />
+              <span className="text-[11px] font-medium text-ink-muted-light">{cells.length}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {cells.map((cell) => (
+                <AssetCard
+                  key={`${cell.asset_name}|${cell.indication}`}
+                  cell={cell}
+                  condition={condition}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 });
+
+// A condition can span hundreds of indications, so a chip row would bury the
+// board. When there are only a few, chips are quickest; past that, fall back to
+// a compact dropdown that keeps the board as the hero.
+const CHIP_LIMIT = 8;
+
+function IndicationFilter({
+  indications,
+  active,
+  onSelect,
+}: {
+  indications: string[];
+  active: string | null;
+  onSelect: (ind: string | null) => void;
+}) {
+  if (indications.length <= 1) return null;
+
+  if (indications.length > CHIP_LIMIT) {
+    return (
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-[12px] text-ink-muted-light">Indication:</span>
+        <select
+          aria-label="Indication"
+          value={active ?? ""}
+          onChange={(e) => onSelect(e.target.value || null)}
+          className="rounded-sm hairline bg-card-light px-3 py-1.5 text-[13px] text-ink-light outline-none"
+        >
+          <option value="">All indications ({indications.length})</option>
+          {indications.map((ind) => (
+            <option key={ind} value={ind}>
+              {ind}
+            </option>
+          ))}
+        </select>
+        {active && (
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            className="text-[12px] text-accent hover:underline"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const chip = (label: string, selected: boolean, value: string | null) => (
+    <button
+      key={label}
+      type="button"
+      onClick={() => onSelect(value)}
+      className={`rounded-full px-3 py-1 text-[12px] ${
+        selected
+          ? "bg-accent-container text-on-accent-container"
+          : "hairline text-ink-muted-light hover:bg-card-light"
+      }`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      <span className="text-[12px] text-ink-muted-light">Indication:</span>
+      {chip("All", active === null, null)}
+      {indications.map((ind) => chip(ind, active === ind, ind))}
+    </div>
+  );
+}
 
 export function CompetitorLandscape() {
   const [input, setInput] = useState("Obesity");
   const [condition, setCondition] = useState("Obesity");
   const [year, setYear] = useState(MAX_YEAR);
+  const [indication, setIndication] = useState<string | null>(null);
   const [landscape, setLandscape] = useState<Landscape | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -129,6 +241,8 @@ export function CompetitorLandscape() {
 
   useEffect(() => {
     setLoading(true);
+    // A fresh condition may not carry the previously selected indication.
+    setIndication(null);
     getLandscape(condition, asOf)
       .then((ls) => {
         setLandscape(ls);
@@ -139,13 +253,20 @@ export function CompetitorLandscape() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condition, year]);
 
+  // Indications that actually have a cell, in the landscape's declared order.
+  const indications = useMemo(() => {
+    if (!landscape) return [];
+    const used = new Set((landscape.cells ?? []).map((c) => c.indication));
+    return landscape.indications.filter((ind) => used.has(ind));
+  }, [landscape]);
+
   return (
     <div className="mx-auto max-w-6xl px-8 py-10">
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
           <h1 className="font-sans text-display-lg text-ink-light">Competitive Landscape</h1>
           <p className="mt-1 font-serif text-[16px] text-ink-muted-light">
-            Which assets are where in development, joined to the living pooled evidence for each.
+            Every asset by its stage of development, joined to the living pooled evidence for each.
           </p>
         </div>
       </div>
@@ -211,12 +332,19 @@ export function CompetitorLandscape() {
       )}
 
       {landscape && landscape.assets.length > 0 && (
-        <LandscapeMatrix landscape={landscape} condition={condition} />
+        <>
+          <IndicationFilter
+            indications={indications}
+            active={indication}
+            onSelect={setIndication}
+          />
+          <PipelineBoard landscape={landscape} condition={condition} indication={indication} />
+        </>
       )}
 
       <p className="mt-4 flex items-center gap-2 text-[12px] text-ink-muted-light">
         <Icon name="info" size={16} />
-        Stages come from ClinicalTrials.gov with full provenance; a linked cell carries its
+        Stages come from ClinicalTrials.gov with full provenance; a linked card carries its
         review's living pooled estimate, GRADE, and homogeneity-gate state.
       </p>
     </div>

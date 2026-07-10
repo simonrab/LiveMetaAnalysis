@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { CompetitorLandscape } from "./CompetitorLandscape";
 import type { Landscape } from "../lib/types";
@@ -12,8 +12,8 @@ import { getLandscape } from "../lib/api";
 const landscape: Landscape = {
   condition: "Type 2 Diabetes",
   as_of: null,
-  assets: ["Semaglutide", "Tirzepatide"],
-  indications: ["Type 2 Diabetes"],
+  assets: ["Semaglutide", "Tirzepatide", "Retatrutide"],
+  indications: ["Type 2 Diabetes", "Obesity"],
   cells: [
     {
       asset_name: "Semaglutide",
@@ -52,6 +52,14 @@ const landscape: Landscape = {
       },
       provenance: [],
     },
+    {
+      asset_name: "Retatrutide",
+      indication: "Obesity",
+      current_phase: "phase_2",
+      sponsor: "Eli Lilly",
+      conflict: false,
+      provenance: [],
+    },
   ],
   notes: [],
 };
@@ -67,16 +75,30 @@ describe("CompetitorLandscape", () => {
     );
   }
 
-  it("renders the assets × indications matrix with stage pills", async () => {
+  it("renders a pipeline board with a column per occupied phase", async () => {
     vi.mocked(getLandscape).mockResolvedValue(landscape);
     renderPage();
-    expect(await screen.findByTestId("landscape-matrix")).toBeInTheDocument();
-    expect(screen.getByText("Semaglutide")).toBeInTheDocument();
-    expect(screen.getByText("Tirzepatide")).toBeInTheDocument();
-    expect(screen.getByText("Phase 3")).toBeInTheDocument();
+    expect(await screen.findByTestId("pipeline-board")).toBeInTheDocument();
+    expect(screen.getByTestId("phase-col-phase_3")).toBeInTheDocument();
+    expect(screen.getByTestId("phase-col-phase_2")).toBeInTheDocument();
+    // No asset sits in Phase 1, so that column is not rendered.
+    expect(screen.queryByTestId("phase-col-phase_1")).not.toBeInTheDocument();
   });
 
-  it("shows the pooled evidence badge and the homogeneity-gate state", async () => {
+  it("places each asset card in its current-phase column", async () => {
+    vi.mocked(getLandscape).mockResolvedValue(landscape);
+    renderPage();
+    const phase3 = await screen.findByTestId("phase-col-phase_3");
+    expect(within(phase3).getByText("Semaglutide")).toBeInTheDocument();
+
+    const phase2 = screen.getByTestId("phase-col-phase_2");
+    expect(within(phase2).getByText("Tirzepatide")).toBeInTheDocument();
+    expect(within(phase2).getByText("Retatrutide")).toBeInTheDocument();
+    // Semaglutide is not duplicated into Phase 2.
+    expect(within(phase2).queryByText("Semaglutide")).not.toBeInTheDocument();
+  });
+
+  it("shows the pooled evidence badge and the homogeneity-gate state on the cards", async () => {
     vi.mocked(getLandscape).mockResolvedValue(landscape);
     renderPage();
     expect(await screen.findByTestId("evidence-pooled")).toHaveTextContent(
@@ -86,16 +108,29 @@ describe("CompetitorLandscape", () => {
     expect(screen.getByTestId("evidence-gate")).toBeInTheDocument();
   });
 
-  it("flags a cell where sources conflict", async () => {
+  it("flags a card where sources conflict", async () => {
     vi.mocked(getLandscape).mockResolvedValue(landscape);
     renderPage();
     expect(await screen.findByLabelText("source conflict")).toBeInTheDocument();
   });
 
+  it("filters the board to one indication when its chip is clicked", async () => {
+    vi.mocked(getLandscape).mockResolvedValue(landscape);
+    renderPage();
+    await screen.findByTestId("pipeline-board");
+    expect(screen.getByText("Semaglutide")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Obesity" }));
+
+    expect(screen.getByText("Retatrutide")).toBeInTheDocument();
+    expect(screen.queryByText("Semaglutide")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tirzepatide")).not.toBeInTheDocument();
+  });
+
   it("re-fetches with an as-of date when the time slider moves", async () => {
     vi.mocked(getLandscape).mockResolvedValue(landscape);
     renderPage();
-    await screen.findByTestId("landscape-matrix");
+    await screen.findByTestId("pipeline-board");
 
     fireEvent.change(screen.getByLabelText("as of year"), { target: { value: "2015" } });
 
