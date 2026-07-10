@@ -98,6 +98,10 @@ export interface TrialExtraction {
   study_id: string;
   label: string;
   measure: string;
+  // Clinical endpoint the effect measures, and the arms CT.gov compared (in its
+  // listed order; surfaced for human verification, not read as orientation).
+  endpoint?: string | null;
+  comparison_arms?: string[];
   hr: number | null;
   ci_low: number | null;
   ci_high: number | null;
@@ -133,6 +137,19 @@ export interface ReviewDecision {
   decision: "confirmed" | "flagged";
   reason?: string | null;
   timestamp?: string | null;
+}
+
+// livemeta.core.schema.EligibilityDecision — one candidate's search -> screen ->
+// include call. `by_claude` is false when the clinical read didn't run (keyless
+// or failed): the trial was auto-included in reduced mode, never silently.
+export interface EligibilityDecision {
+  study_id: string;
+  decision: "included" | "excluded";
+  reason: string;
+  domain?: string | null;
+  quote?: Provenance | null;
+  by_claude: boolean;
+  confirmed: boolean;
 }
 
 export type RobJudgment = "low" | "some_concerns" | "high" | "pending";
@@ -196,6 +213,9 @@ export interface DiversityAssessment {
   i2_band: string;
   requires_confirmation: boolean;
   confirmed: boolean;
+  // False when the clinical read didn't run (no model key): the gate rested on
+  // the I² band alone, and the UI should show that reduced coverage honestly.
+  clinical_assessed?: boolean;
   rationale: string;
 }
 
@@ -221,6 +241,14 @@ export interface ReviewSummary {
   status: string;
 }
 
+// livemeta.core.schema.TrialCandidate — a trial surfaced by search, before
+// extraction (used by the on-demand living "check for new trials").
+export interface TrialCandidate {
+  nct_id: string;
+  title: string;
+  source?: string;
+}
+
 export interface PICO {
   population: string;
   intervention: string;
@@ -242,8 +270,35 @@ export interface ValidationResult {
   issues: { study_id: string; code: string; message: string }[];
 }
 
+export interface PrismaExclusion {
+  reason: string;
+  count: number;
+  study_ids: string[];
+  // "screening" = a clinical PICO/design eligibility call; "reports" = cleared
+  // screening but had no extractable/valid effect data.
+  stage?: "screening" | "reports";
+}
+
+// PRISMA 2020 record-flow, derived deterministically from the run. Mirrors
+// livemeta.core.schema.PrismaFlow. Reconciles: identified = screened +
+// duplicates_removed; screened = assessed + not_retrieved; assessed = included +
+// sum(excluded counts).
+export interface PrismaFlow {
+  identified: number;
+  identified_by_source: Record<string, number>;
+  duplicates_removed: number;
+  screened: number;
+  not_retrieved: number;
+  assessed: number;
+  excluded: PrismaExclusion[];
+  included: number;
+  included_in_synthesis: number;
+  synthesis_note: string;
+}
+
 export interface ReviewResult {
   question: Question;
+  screening?: EligibilityDecision[];
   extractions: TrialExtraction[];
   validations: ValidationResult[];
   pool: PoolResult | null;
@@ -252,6 +307,7 @@ export interface ReviewResult {
   grade: GradeAssessment | null;
   sensitivity: LeaveOneOutRow[];
   diversity?: DiversityAssessment | null;
+  prisma?: PrismaFlow | null;
 }
 
 export interface PipelineEvent {
@@ -287,4 +343,197 @@ export interface SnapshotMeta {
   ci_low: number | null;
   ci_high: number | null;
   measure: string;
+}
+
+// --- Competitive-intelligence landscape (mirrors livemeta.core.ci.schema) ----
+
+export type Phase =
+  | "preclinical"
+  | "phase_1"
+  | "phase_1_2"
+  | "phase_2"
+  | "phase_2_3"
+  | "phase_3"
+  | "phase_4"
+  | "filed"
+  | "approved"
+  | "withdrawn"
+  | "unknown";
+
+// Short display labels for each stage, in ascending order of advancement.
+export const PHASE_LABEL: Record<Phase, string> = {
+  preclinical: "Preclinical",
+  phase_1: "Phase 1",
+  phase_1_2: "Phase 1/2",
+  phase_2: "Phase 2",
+  phase_2_3: "Phase 2/3",
+  phase_3: "Phase 3",
+  phase_4: "Phase 4",
+  filed: "Filed",
+  approved: "Approved",
+  withdrawn: "Withdrawn",
+  unknown: "Unknown",
+};
+
+export interface DevelopmentEvent {
+  asset_name: string;
+  indication: string;
+  line_of_therapy?: string | null;
+  phase: Phase;
+  status?: string | null;
+  event_type: string;
+  date?: string | null;
+  source_type: string;
+  sponsor?: string | null;
+  sponsor_class?: string | null;
+  provenance: Provenance[];
+}
+
+export interface EvidenceBadge {
+  question_id: string;
+  measure: string;
+  state: "pooled" | "gate_open" | "abstained";
+  estimate?: number | null;
+  ci_low?: number | null;
+  ci_high?: number | null;
+  grade_certainty?: string | null;
+  conclusion?: string | null;
+  version?: number | null;
+  k: number;
+}
+
+export interface LandscapeCell {
+  asset_name: string;
+  indication: string;
+  line_of_therapy?: string | null;
+  current_phase: Phase;
+  status?: string | null;
+  sponsor?: string | null;
+  sponsor_class?: string | null;
+  latest_event?: DevelopmentEvent | null;
+  conflict: boolean;
+  conflict_note?: string | null;
+  question_id?: string | null;
+  evidence?: EvidenceBadge | null;
+  provenance: Provenance[];
+}
+
+export interface Landscape {
+  condition: string;
+  as_of?: string | null;
+  assets: string[];
+  indications: string[];
+  cells: LandscapeCell[];
+  notes: string[];
+}
+
+// --- v2: source selection, asset dossiers, indication mapping ----------------
+
+export type Source = "ctgov" | "pubmed" | "openfda" | "announcement" | "filing";
+
+export const STRUCTURED_SOURCES: Source[] = ["ctgov", "pubmed", "openfda"];
+export const FREE_TEXT_SOURCES: Source[] = ["announcement", "filing"];
+
+export const SOURCE_LABEL: Record<Source, string> = {
+  ctgov: "ClinicalTrials.gov",
+  pubmed: "PubMed / Europe PMC",
+  openfda: "openFDA (approvals)",
+  announcement: "Announcements",
+  filing: "Filings",
+};
+
+export interface SubPopulation {
+  base_indication: string;
+  age_min?: number | null;
+  age_max?: number | null;
+  sex?: string | null;
+  comorbidities: string[];
+  line_of_therapy?: string | null;
+  prior_treatment?: string | null;
+  label: string;
+  provenance: Provenance[];
+}
+
+export interface TrialDetail {
+  nct_id: string;
+  title: string;
+  asset_name: string;
+  phase: Phase;
+  status?: string | null;
+  enrollment?: number | null;
+  start_date?: string | null;
+  primary_completion_date?: string | null;
+  results_posted_date?: string | null;
+  has_results: boolean;
+  sponsor?: string | null;
+  sponsor_class?: string | null;
+  countries: string[];
+  indication: string;
+  sub_population?: SubPopulation | null;
+  effect?: TrialExtraction | null;
+  provenance: Provenance[];
+}
+
+export interface RegulatoryApproval {
+  drug: string;
+  sponsor?: string | null;
+  application_number: string;
+  brand_names: string[];
+  approval_date?: string | null;
+  marketing_status?: string | null;
+  indication_approx?: string | null;
+  provenance: Provenance[];
+}
+
+export interface CountryCount {
+  country: string;
+  trials: number;
+}
+
+export interface SubIndicationGroup {
+  signature: string;
+  label: string;
+  trial_ids: string[];
+  phases: string[];
+  evidence?: EvidenceBadge | null;
+}
+
+export interface Asset {
+  name: string;
+  aliases: string[];
+  sponsor?: string | null;
+  sponsor_class?: string | null;
+  drug_class?: string | null;
+  provenance: Provenance[];
+}
+
+export interface AssetDossier {
+  asset: Asset;
+  sources: Source[];
+  trials: TrialDetail[];
+  countries: CountryCount[];
+  events: DevelopmentEvent[];
+  readouts: TrialDetail[];
+  approvals: RegulatoryApproval[];
+  sub_indications: SubIndicationGroup[];
+  notes: string[];
+}
+
+export interface IndicationNode {
+  signature: string;
+  label: string;
+  sub_population?: SubPopulation | null;
+  assets: string[];
+  trial_count: number;
+  stage_distribution: Record<string, number>;
+  countries: CountryCount[];
+  approvals: RegulatoryApproval[];
+  evidence?: EvidenceBadge | null;
+}
+
+export interface IndicationMap {
+  indication: string;
+  sources: Source[];
+  nodes: IndicationNode[];
+  notes: string[];
 }

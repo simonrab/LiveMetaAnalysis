@@ -21,6 +21,15 @@ from mcp.server.fastmcp import FastMCP
 
 from ..core import demo
 from ..core import extract as extract_mod
+from ..core.ci import service as ci_service
+from ..core.ci.schema import (
+    AssetDossier,
+    DevelopmentEvent,
+    IndicationMap,
+    Landscape,
+    SourceSelection,
+)
+from ..core.sources.openfda import OpenFdaClient
 from ..core import grade as grade_mod
 from ..core import living as living_mod
 from ..core import llm as llm_mod
@@ -86,6 +95,21 @@ def get_epmc_client() -> EuropePmcClient:
     if _epmc_client is None:
         _epmc_client = EuropePmcClient()
     return _epmc_client
+
+
+_openfda: OpenFdaClient | None = None
+
+
+def set_openfda(client: OpenFdaClient) -> None:
+    global _openfda
+    _openfda = client
+
+
+def get_openfda() -> OpenFdaClient:
+    global _openfda
+    if _openfda is None:
+        _openfda = OpenFdaClient()
+    return _openfda
 
 
 def set_store(store: SnapshotStore) -> None:
@@ -304,6 +328,84 @@ def update(question_id: str, new_trial_id: str) -> ReviewDiff:
     """
     return living_mod.apply_update(
         get_store(), question_id, new_trial_id, get_client().fetch_study
+    )
+
+
+@mcp.tool()
+def check_updates(question_id: str) -> list[TrialCandidate]:
+    """Re-search a saved review's PICO and return trials new since the last run.
+
+    The discovery half of the living layer: it re-runs the same PICO search that
+    built the review and diffs the hits against the ids already pooled, so what
+    comes back is exactly the set a reviewer could feed to `update`. It never
+    auto-pools. Shares its core with the REST `check-updates` endpoint via
+    `living.check_for_new_trials`.
+    """
+    return living_mod.check_for_new_trials(get_store(), question_id, get_client())
+
+
+@mcp.tool()
+def map_landscape(condition: str, as_of: str | None = None) -> Landscape:
+    """Map the competitive pipeline for a condition, as of an optional date.
+
+    Assets × indications from ClinicalTrials.gov (sponsor, phase, status, dates),
+    reconciled over time so `as_of` reconstructs the pipeline at a past point.
+    Cells linked to a saved review carry that review's living pooled-evidence
+    badge — the competitive skeleton joined to the evidence flesh.
+    """
+    return ci_service.get_landscape(
+        get_store(), condition, as_of=as_of, search_pipeline=get_client().search_pipeline
+    )
+
+
+@mcp.tool()
+def track_asset(condition: str, name: str) -> list[DevelopmentEvent]:
+    """Return one asset's dated development timeline within a condition landscape."""
+    ci_service.get_landscape(
+        get_store(), condition, search_pipeline=get_client().search_pipeline
+    )  # ensure the landscape is seeded before reading the timeline
+    return ci_service.asset_timeline(get_store(), condition, name)
+
+
+@mcp.tool()
+def ingest_announcement(
+    condition: str, text: str, source_label: str
+) -> list[DevelopmentEvent]:
+    """Read a free-text corporate announcement/filing into development events.
+
+    Claude structures what the document states (each event with its source
+    snippet); low-confidence or not-found milestones are dropped, and with no key
+    configured nothing is returned — the tool abstains rather than inventing a
+    stage. Persisted so they appear on the landscape.
+    """
+    return ci_service.ingest_to_landscape(get_store(), condition, text, source_label)
+
+
+@mcp.tool()
+def asset_dossier(name: str, sources: str | None = None) -> AssetDossier:
+    """Deep competitive dossier for one drug: every trial (phase, status,
+    enrolment, countries, readouts), pipeline events, sub-indications, openFDA
+    approvals, and the living pooled evidence. `sources` (comma list) selects the
+    data sources; default is the structured trio (ctgov, pubmed, openfda)."""
+    return ci_service.asset_dossier(
+        get_store(),
+        name,
+        search=get_client().search_by_intervention,
+        openfda=get_openfda(),
+        selection=SourceSelection.from_param(sources),
+    )
+
+
+@mcp.tool()
+def indication_map(name: str, sources: str | None = None) -> IndicationMap:
+    """Break an indication into its sub-populations (e.g. obesity + established
+    CVD, obesity in adults >=65), each with the assets, stage distribution,
+    geography, and evidence targeting it."""
+    return ci_service.indication_map(
+        get_store(),
+        name,
+        search=get_client().search_by_condition,
+        selection=SourceSelection.from_param(sources),
     )
 
 

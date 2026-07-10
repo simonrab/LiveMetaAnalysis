@@ -27,9 +27,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ..core import demo, living, llm, pipeline, rob as rob_mod
+from ..core.ci import service as ci_service
+from ..core.ci.schema import (
+    AssetDossier,
+    DevelopmentEvent,
+    IndicationMap,
+    Landscape,
+    SourceSelection,
+)
+from ..core.sources.openfda import OpenFdaClient
 from ..core.diff import diff_reviews, status_from_diff
 from ..core.schema import (
     DiversityDecision,
+    EligibilityDecision,
     Question,
     ReviewDecision,
     ReviewDiff,
@@ -37,6 +47,7 @@ from ..core.schema import (
     ReviewSummary,
     RobDecision,
     SnapshotMeta,
+    TrialCandidate,
 )
 from ..core.sources.clinicaltrials import ClinicalTrialsClient
 from ..core.sources.router import SourceRouter
@@ -76,6 +87,34 @@ def get_parse():
     return parse
 
 
+def get_search_client():
+    """Injectable CT.gov search client for the living re-search (overridden in tests)."""
+    return ClinicalTrialsClient()
+
+
+def get_ci_search():
+    """Injectable CT.gov pipeline search for the competitive landscape.
+
+    Returns the wide-fields search that keeps sponsor/phase/status/interventions
+    (overridden in tests with canned studies so the landscape is network-free)."""
+    return ClinicalTrialsClient().search_pipeline
+
+
+def get_ci_asset_search():
+    """Injectable CT.gov search by intervention (a drug's trials) for the dossier."""
+    return ClinicalTrialsClient().search_by_intervention
+
+
+def get_ci_indication_search():
+    """Injectable CT.gov search by condition (an indication's trials) for the map."""
+    return ClinicalTrialsClient().search_by_condition
+
+
+def get_openfda():
+    """Injectable openFDA approvals client (overridden in tests)."""
+    return OpenFdaClient()
+
+
 class ParseRequest(BaseModel):
     text: str
 
@@ -98,6 +137,25 @@ class UpdateRequest(BaseModel):
 
 class DiversityDecisionRequest(BaseModel):
     reason: str | None = None
+
+
+class ScreeningDecisionRequest(BaseModel):
+    study_id: str
+    decision: str  # "included" | "excluded"
+    reason: str | None = None
+
+
+class IngestRequest(BaseModel):
+    condition: str
+    text: str
+    source_label: str
+
+
+class LinkRequest(BaseModel):
+    condition: str
+    asset_name: str
+    indication: str
+    question_id: str
 
 
 def _summary(result: ReviewResult, versions: int, status: str) -> ReviewSummary:
@@ -203,6 +261,22 @@ def update_review(
         raise HTTPException(status_code=404, detail="No such review.")
 
 
+@app.post("/api/reviews/{question_id}/check-updates", response_model=list[TrialCandidate])
+def check_updates(
+    question_id: str,
+    search_client=Depends(get_search_client),
+    store: SnapshotStore = Depends(get_store),
+) -> list[TrialCandidate]:
+    """Make the living claim real: re-search the saved question's PICO and return
+    the trials that are genuinely new since the last run. Discovery only — the
+    reviewer decides whether to inject one via the update endpoint. Shares its
+    core with the MCP `check_updates` tool."""
+    try:
+        return living.check_for_new_trials(store, question_id, search_client)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="No such review.")
+
+
 @app.get("/api/reviews/{question_id}/history", response_model=list[SnapshotMeta])
 def review_history(
     question_id: str, store: SnapshotStore = Depends(get_store)
@@ -286,6 +360,130 @@ def record_rob_decision(
     return latest
 
 
+@app.post("/api/reviews/{question_id}/screening/decision", response_model=ReviewResult)
+def record_screening_decision(
+    question_id: str,
+    req: ScreeningDecisionRequest,
+    fetch=Depends(get_fetch_study),
+    store: SnapshotStore = Depends(get_store),
+) -> ReviewResult:
+    """Record a reviewer's include/exclude sign-off on one trial's eligibility.
+
+    Confirming keeps Claude's call (with `decision` equal to it); overriding flips
+    it. Because a screened-out trial is never extracted, the decision is applied by
+    *re-running* the review with every stored eligibility override replayed — so
+    flipping a trial back in re-fetches and re-pools it. Human extraction and RoB
+    sign-offs are re-applied afterward so the audit trail is preserved.
+    """
+    latest = store.load_latest(question_id)
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No such review.")
+
+    store.save_screening_decision(
+        question_id,
+        EligibilityDecision(
+            study_id=req.study_id,
+            decision=req.decision,
+            reason=req.reason or "Reviewer sign-off.",
+            by_claude=False,
+            confirmed=True,
+        ),
+    )
+    overrides = {d.study_id: d for d in store.load_screening_decisions(question_id)}
+    rerun = pipeline.run_review_collect(
+        latest.question, fetch, screening_overrides=overrides
+    )
+    review_decisions = store.load_decisions(question_id)
+    if review_decisions:
+        rerun = pipeline.repool_with_decisions(rerun, review_decisions)
+    rob_decisions = store.load_rob_decisions(question_id)
+    if rob_decisions:
+        rerun.rob = [rob_mod.apply_rob_decisions(a, rob_decisions) for a in rerun.rob]
+    store.save_snapshot(rerun)
+    return rerun
+
+
+# --- Competitive-intelligence landscape -------------------------------------
+
+
+@app.get("/api/landscape", response_model=Landscape)
+def get_landscape(
+    condition: str,
+    as_of: str | None = None,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_search),
+) -> Landscape:
+    """The competitive matrix for a condition, reconstructed as of `as_of`.
+
+    Assets × indications, cells colored by development stage, each carrying the
+    living pooled-evidence badge when linked to a saved review.
+    """
+    return ci_service.get_landscape(store, condition, as_of=as_of, search_pipeline=search)
+
+
+@app.get("/api/landscape/asset/{name}", response_model=list[DevelopmentEvent])
+def get_asset_timeline(
+    name: str, condition: str, store: SnapshotStore = Depends(get_store)
+) -> list[DevelopmentEvent]:
+    """One asset's dated development history for the drill-in view."""
+    return ci_service.asset_timeline(store, condition, name)
+
+
+@app.post("/api/landscape/ingest", response_model=Landscape)
+def ingest_landscape(
+    req: IngestRequest,
+    store: SnapshotStore = Depends(get_store),
+) -> Landscape:
+    """Read a free-text announcement/filing into events, then re-assemble.
+
+    The model is resolved from ANTHROPIC_API_KEY inside the service; with no key
+    it returns no events (the tool abstains rather than invents a pipeline)."""
+    ci_service.ingest_to_landscape(store, req.condition, req.text, req.source_label)
+    return ci_service.get_landscape(store, req.condition)
+
+
+@app.post("/api/landscape/link", response_model=Landscape)
+def link_landscape(
+    req: LinkRequest,
+    store: SnapshotStore = Depends(get_store),
+) -> Landscape:
+    """Link an asset×indication cell to a saved review so its evidence badge shows."""
+    ci_service.link_review(
+        store, req.condition, req.asset_name, req.indication, req.question_id
+    )
+    return ci_service.get_landscape(store, req.condition)
+
+
+@app.get("/api/asset/{name}", response_model=AssetDossier)
+def asset_dossier(
+    name: str,
+    sources: str | None = None,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_asset_search),
+    openfda=Depends(get_openfda),
+) -> AssetDossier:
+    """Deep dossier for one drug: every trial, geography, readouts, events,
+    sub-indications, approvals, and the living pooled evidence. `sources` selects
+    which data sources are used (default: the structured trio)."""
+    selection = SourceSelection.from_param(sources)
+    return ci_service.asset_dossier(
+        store, name, search=search, openfda=openfda, selection=selection
+    )
+
+
+@app.get("/api/indication/{name}", response_model=IndicationMap)
+def indication_map(
+    name: str,
+    sources: str | None = None,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_indication_search),
+) -> IndicationMap:
+    """An indication broken into its sub-populations, each with its assets,
+    stage distribution, geography, and evidence."""
+    selection = SourceSelection.from_param(sources)
+    return ci_service.indication_map(store, name, search=search, selection=selection)
+
+
 @app.websocket("/ws/review")
 async def ws_review(
     websocket: WebSocket,
@@ -319,3 +517,31 @@ def _question_from_payload(payload: dict) -> Question:
     if payload.get("question"):
         return Question.model_validate(payload["question"])
     return demo.GLP1_MACE_QUESTION
+
+
+# --- Serve the built web UI (single-origin deploy) ---------------------------
+#
+# When a built SPA is present (LIVEMETA_WEB_DIST, or ./static_web next to the
+# repo root), the backend serves it too, so one Railway URL is the whole app —
+# no separate frontend host, no CORS. Client-side routes (/landscape, /reviews/…)
+# fall back to index.html. Defined last so every /api and /ws route wins first.
+import os as _os  # noqa: E402
+
+from fastapi.responses import FileResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+_REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.dirname(__file__)))
+_WEB_DIST = _os.environ.get("LIVEMETA_WEB_DIST", _os.path.join(_REPO_ROOT, "static_web"))
+
+if _os.path.isdir(_WEB_DIST):
+    _ASSETS = _os.path.join(_WEB_DIST, "assets")
+    if _os.path.isdir(_ASSETS):
+        app.mount("/assets", StaticFiles(directory=_ASSETS), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def _spa(full_path: str):
+        """Serve a real static file if it exists, else the SPA entrypoint."""
+        candidate = _os.path.join(_WEB_DIST, full_path)
+        if full_path and _os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(_os.path.join(_WEB_DIST, "index.html"))

@@ -15,7 +15,14 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .schema import ReviewDecision, ReviewResult, RobDecision, SnapshotMeta
+from .ci.schema import DevelopmentEvent, RegulatoryApproval, SubPopulation
+from .schema import (
+    EligibilityDecision,
+    ReviewDecision,
+    ReviewResult,
+    RobDecision,
+    SnapshotMeta,
+)
 
 _DEFAULT_DIR = ".livemeta_data"
 _DB_NAME = "livemeta.db"
@@ -82,6 +89,44 @@ class SnapshotStore:
                     decision_json TEXT NOT NULL,
                     updated_at    TEXT NOT NULL,
                     PRIMARY KEY (question_id, study_id, domain_key)
+                );
+                CREATE TABLE IF NOT EXISTS screening_decisions (
+                    question_id   TEXT NOT NULL,
+                    study_id      TEXT NOT NULL,
+                    decision_json TEXT NOT NULL,
+                    updated_at    TEXT NOT NULL,
+                    PRIMARY KEY (question_id, study_id)
+                );
+                CREATE TABLE IF NOT EXISTS development_events (
+                    landscape_id TEXT NOT NULL,
+                    asset_name   TEXT NOT NULL,
+                    indication   TEXT NOT NULL,
+                    source_type  TEXT NOT NULL,
+                    event_type   TEXT NOT NULL,
+                    event_date   TEXT NOT NULL,
+                    event_json   TEXT NOT NULL,
+                    updated_at   TEXT NOT NULL,
+                    PRIMARY KEY (landscape_id, asset_name, indication, source_type,
+                                 event_type, event_date)
+                );
+                CREATE TABLE IF NOT EXISTS landscape_links (
+                    landscape_id TEXT NOT NULL,
+                    asset_name   TEXT NOT NULL,
+                    indication   TEXT NOT NULL,
+                    question_id  TEXT NOT NULL,
+                    updated_at   TEXT NOT NULL,
+                    PRIMARY KEY (landscape_id, asset_name, indication)
+                );
+                CREATE TABLE IF NOT EXISTS subpop_cache (
+                    nct_id     TEXT PRIMARY KEY,
+                    subpop_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS approvals (
+                    application_number TEXT PRIMARY KEY,
+                    drug          TEXT NOT NULL,
+                    approval_json TEXT NOT NULL,
+                    updated_at    TEXT NOT NULL
                 );
                 """
             )
@@ -233,3 +278,149 @@ class SnapshotStore:
                 (question_id,),
             ).fetchall()
         return [RobDecision.model_validate_json(r["decision_json"]) for r in rows]
+
+    def save_screening_decision(
+        self, question_id: str, decision: EligibilityDecision
+    ) -> None:
+        """Record a human include/exclude sign-off on one trial's eligibility.
+
+        The reviewer's authoritative call: the latest per trial wins, and it is
+        replayed as an override when the review is re-run so the decision sticks.
+        """
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                """
+                INSERT INTO screening_decisions
+                    (question_id, study_id, decision_json, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(question_id, study_id)
+                DO UPDATE SET decision_json = excluded.decision_json,
+                              updated_at = excluded.updated_at
+                """,
+                (question_id, decision.study_id, decision.model_dump_json(), _now()),
+            )
+
+    def load_screening_decisions(self, question_id: str) -> list[EligibilityDecision]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT decision_json FROM screening_decisions WHERE question_id = ? "
+                "ORDER BY study_id",
+                (question_id,),
+            ).fetchall()
+        return [EligibilityDecision.model_validate_json(r["decision_json"]) for r in rows]
+
+    # --- competitive-intelligence: events + evidence links -------------------
+
+    def save_events(self, landscape_id: str, events: list[DevelopmentEvent]) -> None:
+        """Append/refresh dated development events for a landscape (condition).
+
+        Deduped on the natural milestone key so re-ingesting the same event is
+        idempotent; the latest read of that milestone wins.
+        """
+        with closing(self._connect()) as conn, conn:
+            for e in events:
+                conn.execute(
+                    """
+                    INSERT INTO development_events
+                        (landscape_id, asset_name, indication, source_type,
+                         event_type, event_date, event_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(landscape_id, asset_name, indication, source_type,
+                                event_type, event_date)
+                    DO UPDATE SET event_json = excluded.event_json,
+                                  updated_at = excluded.updated_at
+                    """,
+                    (
+                        landscape_id,
+                        e.asset_name,
+                        e.indication,
+                        e.source_type.value,
+                        e.event_type.value,
+                        e.date or "",
+                        e.model_dump_json(),
+                        _now(),
+                    ),
+                )
+
+    def load_events(self, landscape_id: str) -> list[DevelopmentEvent]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT event_json FROM development_events WHERE landscape_id = ? "
+                "ORDER BY event_date",
+                (landscape_id,),
+            ).fetchall()
+        return [DevelopmentEvent.model_validate_json(r["event_json"]) for r in rows]
+
+    def save_link(
+        self, landscape_id: str, asset_name: str, indication: str, question_id: str
+    ) -> None:
+        """Link an asset×indication cell to a saved review (its `question_id`)."""
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                """
+                INSERT INTO landscape_links
+                    (landscape_id, asset_name, indication, question_id, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(landscape_id, asset_name, indication)
+                DO UPDATE SET question_id = excluded.question_id,
+                              updated_at = excluded.updated_at
+                """,
+                (landscape_id, asset_name, indication, question_id, _now()),
+            )
+
+    def load_links(self, landscape_id: str) -> dict[tuple[str, str], str]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT asset_name, indication, question_id FROM landscape_links "
+                "WHERE landscape_id = ?",
+                (landscape_id,),
+            ).fetchall()
+        return {(r["asset_name"], r["indication"]): r["question_id"] for r in rows}
+
+    def load_all_links(self) -> dict[tuple[str, str], str]:
+        """Every asset×indication → question_id link across all landscapes."""
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT asset_name, indication, question_id FROM landscape_links"
+            ).fetchall()
+        return {(r["asset_name"], r["indication"]): r["question_id"] for r in rows}
+
+    # --- v2: sub-population cache (LLM cost) + openFDA approvals cache --------
+
+    def save_subpop(self, nct_id: str, subpop: SubPopulation) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO subpop_cache (nct_id, subpop_json, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(nct_id) DO UPDATE SET subpop_json = excluded.subpop_json, "
+                "updated_at = excluded.updated_at",
+                (nct_id, subpop.model_dump_json(), _now()),
+            )
+
+    def load_subpops(self, nct_ids: list[str]) -> dict[str, SubPopulation]:
+        if not nct_ids:
+            return {}
+        placeholders = ",".join("?" for _ in nct_ids)
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                f"SELECT nct_id, subpop_json FROM subpop_cache WHERE nct_id IN ({placeholders})",
+                tuple(nct_ids),
+            ).fetchall()
+        return {r["nct_id"]: SubPopulation.model_validate_json(r["subpop_json"]) for r in rows}
+
+    def save_approvals(self, approvals: list[RegulatoryApproval]) -> None:
+        with closing(self._connect()) as conn, conn:
+            for a in approvals:
+                conn.execute(
+                    "INSERT INTO approvals (application_number, drug, approval_json, updated_at) "
+                    "VALUES (?, ?, ?, ?) ON CONFLICT(application_number) DO UPDATE SET "
+                    "approval_json = excluded.approval_json, updated_at = excluded.updated_at",
+                    (a.application_number, a.drug, a.model_dump_json(), _now()),
+                )
+
+    def load_approvals(self, drug: str) -> list[RegulatoryApproval]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT approval_json FROM approvals WHERE drug = ? ORDER BY application_number",
+                (drug,),
+            ).fetchall()
+        return [RegulatoryApproval.model_validate_json(r["approval_json"]) for r in rows]
