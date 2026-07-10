@@ -44,7 +44,9 @@ def slugify(condition: str) -> str:
 def _ctgov_events(search_pipeline: Callable[[str], list[dict]], condition: str) -> list[DevelopmentEvent]:
     events: list[DevelopmentEvent] = []
     for study in search_pipeline(condition):
-        events.extend(study_to_events(study))
+        # Scope each trial's indication to the searched condition so the
+        # landscape's indication list stays relevant (see _focus_condition).
+        events.extend(study_to_events(study, focus_condition=condition))
     return events
 
 

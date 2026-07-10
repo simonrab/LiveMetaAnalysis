@@ -60,6 +60,26 @@ def test_refresh_clears_stale_cache_and_reseeds(tmp_path):
     assert "Karolinska Cocktail" not in refreshed.assets
 
 
+def test_landscape_indications_are_scoped_to_the_condition_area(tmp_path):
+    store = SnapshotStore(data_dir=tmp_path)
+    studies = [
+        # Obesity trial that lists a comorbidity first.
+        _study(nct="NCT1", conditions=("Hypertension", "Obesity"),
+               interventions=(("DRUG", "DrugA"),)),
+        _study(nct="NCT2", conditions=("Childhood Obesity",),
+               interventions=(("DRUG", "DrugB"),)),
+        # Obesity is only incidental (a cancer trial CT.gov linked to obesity).
+        _study(nct="NCT3", conditions=("Breast Cancer",),
+               interventions=(("DRUG", "DrugC"),)),
+    ]
+    ls = service.get_landscape(store, "Obesity", search_pipeline=_search(studies))
+    # The dropdown shows only obesity-area indications — no comorbidity, no
+    # off-target disease leaks in.
+    assert "Hypertension" not in ls.indications
+    assert "Breast Cancer" not in ls.indications
+    assert set(ls.indications) == {"Obesity", "Childhood Obesity"}
+
+
 def test_as_of_reconstructs_earlier_pipeline(tmp_path):
     store = SnapshotStore(data_dir=tmp_path)
     study = _study(
