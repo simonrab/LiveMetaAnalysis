@@ -127,19 +127,6 @@ export function Sidebar() {
           <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} size={18} />
           <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
         </button>
-        {[
-          { label: "Export", icon: "download" },
-          { label: "Settings", icon: "settings" },
-        ].map((l) => (
-          <span
-            key={l.label}
-            className="flex cursor-not-allowed items-center gap-3 rounded-sm px-3 py-2 text-label-caps text-outline-variant opacity-70"
-            title="Coming in a later slice"
-          >
-            <Icon name={l.icon} size={18} />
-            <span>{l.label}</span>
-          </span>
-        ))}
       </div>
     </aside>
   );
