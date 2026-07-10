@@ -64,23 +64,16 @@ export function Sidebar() {
     <aside className="hairline-r fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col bg-surface-container-low py-6 md:flex">
       <div className="mb-8 flex items-center gap-3 px-5">
         <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-on-primary">
-          <svg
-            viewBox="0 0 24 24"
-            width="19"
-            height="19"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M3 12h4l3-7 4 14 3-7h4" />
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <polygon points="12,3 17,7 12,11 7,7" />
+            <rect x="7" y="13.5" width="10" height="2" rx="1" />
+            <rect x="5" y="16.5" width="14" height="2" rx="1" />
+            <rect x="8" y="19.5" width="8" height="2" rx="1" />
           </svg>
         </div>
         <div>
           <h1 className="font-sans text-headline-md font-bold leading-tight text-ink-light">
-            Meridian
+            Strata
           </h1>
           <p className="text-label-caps uppercase text-ink-muted-light">Living evidence</p>
         </div>
