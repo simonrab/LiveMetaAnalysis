@@ -79,7 +79,7 @@ export function Dashboard() {
           <p className="text-[14px] text-ink-muted-light">
             No reviews yet.{" "}
             <Link to="/ask" className="text-accent underline">
-              Ask a clinical question
+              Start an evidence review
             </Link>{" "}
             to run your first one.
           </p>

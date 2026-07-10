@@ -13,7 +13,7 @@ function item(active: boolean): string {
 
 const primary = [
   { to: "/", label: "Reviews", end: true, icon: "space_dashboard" },
-  { to: "/ask", label: "Ask", end: false, icon: "help_outline" },
+  { to: "/ask", label: "New review", end: false, icon: "edit_note" },
   { to: "/landscape", label: "Landscape", end: false, icon: "hub" },
 ];
 
