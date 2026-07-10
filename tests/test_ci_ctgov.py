@@ -113,13 +113,18 @@ def test_search_pipeline_requests_wide_fields_and_returns_raw_studies():
     route = respx.get(f"{BASE}/studies").mock(
         return_value=httpx.Response(200, json=payload)
     )
-    studies = ClinicalTrialsClient().search_pipeline("semaglutide diabetes", page_size=2)
+    studies = ClinicalTrialsClient().search_pipeline("obesity", page_size=2)
 
     assert [s["protocolSection"]["identificationModule"]["nctId"] for s in studies] == [
         "NCT1",
         "NCT2",
     ]
-    fields = route.calls.last.request.url.params.get("fields")
+    params = route.calls.last.request.url.params
+    # Condition-scoped, not free-text: the landscape must not pull trials that
+    # merely mention the condition (a saline study enrolling obese patients).
+    assert params.get("query.cond") == "obesity"
+    assert params.get("query.term") is None
+    fields = params.get("fields")
     for module in (
         "sponsorCollaboratorsModule",
         "designModule",
