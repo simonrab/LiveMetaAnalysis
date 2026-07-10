@@ -1,13 +1,23 @@
 """Trial search: turn a PICO into a query and return candidate trials.
 
-Wraps the ClinicalTrials.gov v2 free-text search. The query builder is
-deterministic (no LLM); Claude-driven query refinement is a later slice.
+Discovery spans two sources so the search is genuinely systematic, not a single
+registry: ClinicalTrials.gov v2 (structured results, the primary source) and
+Europe PMC (the published literature). The query builder is deterministic (no
+LLM); Claude-driven query refinement is a later slice.
+
+Deduplication here is at the *reference-id* level (an id appears once). True
+cross-registry deduplication — matching a trial's ClinicalTrials.gov NCT to its
+Europe PMC journal record — is deferred; because effect numbers are only pooled
+from CT.gov's structured results (a Europe PMC-only record flags at extraction
+rather than pooling), a trial surfaced by both sources cannot be double-counted
+in the pooled estimate.
 """
 
 from __future__ import annotations
 
 from .schema import PICO, TrialCandidate
 from .sources.clinicaltrials import ClinicalTrialsClient
+from .sources.europepmc import EuropePmcClient
 
 
 def build_query(pico: PICO) -> str:
@@ -28,21 +38,56 @@ def search_trials(
     pico: PICO,
     max_results: int = 1000,
     client: ClinicalTrialsClient | None = None,
+    epmc_client: EuropePmcClient | None = None,
     interventional_only: bool = True,
 ) -> list[TrialCandidate]:
-    """Search CT.gov for candidate trials matching the PICO.
+    """Search both sources for candidate trials matching the PICO.
 
-    `interventional_only` (on by default) applies CT.gov's study-type filter at
-    the API — the first, cheapest screen — so the candidate set the pipeline
-    screens clinically is already limited to interventional trials.
+    ClinicalTrials.gov leads (it's the primary, structured source and keeps the
+    pool deterministic); Europe PMC records follow. `interventional_only` (on by
+    default) applies CT.gov's study-type filter at the API — the first, cheapest
+    screen — so the CT.gov candidates are already limited to interventional
+    trials. Europe PMC being unavailable degrades discovery to CT.gov alone
+    rather than failing the search.
     """
+    ctgov_injected = client is not None
     client = client or ClinicalTrialsClient()
     query = build_query(pico)
-    hits = client.search_studies(
+
+    candidates: list[TrialCandidate] = []
+    seen: set[str] = set()
+
+    for h in client.search_studies(
         query, page_size=max_results, interventional_only=interventional_only
-    )
-    return [
-        TrialCandidate(nct_id=h.get("nct_id", ""), title=h.get("title", ""))
-        for h in hits
-        if h.get("nct_id")
-    ]
+    ):
+        nct = h.get("nct_id")
+        if nct and nct not in seen:
+            seen.add(nct)
+            candidates.append(
+                TrialCandidate(nct_id=nct, title=h.get("title", ""))
+            )
+
+    # Europe PMC uses the injected client; else a live one is constructed only on
+    # the fully default path. A caller that injects a specific CT.gov client (a
+    # test, or `parse_question`) opts into Europe PMC by injecting one too, rather
+    # than triggering unexpected live I/O.
+    epmc = epmc_client
+    if epmc is None and not ctgov_injected:
+        epmc = EuropePmcClient()
+    if epmc is not None:
+        try:
+            for h in epmc.search_studies(query, page_size=max_results):
+                ref = h.get("id")
+                if ref and ref not in seen:
+                    seen.add(ref)
+                    candidates.append(
+                        TrialCandidate(
+                            nct_id=ref, title=h.get("title", ""), source="europepmc"
+                        )
+                    )
+        except Exception:
+            # Discovery must never fail on a second-source outage — degrade to the
+            # ClinicalTrials.gov candidates already collected.
+            pass
+
+    return candidates

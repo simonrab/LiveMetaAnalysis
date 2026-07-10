@@ -50,6 +50,7 @@ from ..core.schema import (
     TrialCandidate,
 )
 from ..core.sources.clinicaltrials import ClinicalTrialsClient
+from ..core.sources.europepmc import EuropePmcClient
 from ..core.sources.router import SourceRouter
 from ..core.store import SnapshotStore, make_store
 
@@ -79,10 +80,19 @@ def get_store() -> SnapshotStore:
 
 
 def get_parse():
-    """Injectable free-text -> Question parser (overridden in tests)."""
+    """Injectable free-text -> Question parser (overridden in tests).
+
+    Discovery spans both sources: ClinicalTrials.gov (structured results) and
+    Europe PMC (published literature), so a real question's candidate set is a
+    genuinely systematic, multi-source search rather than a single registry.
+    """
 
     def parse(text: str) -> Question:
-        return llm.parse_question(text, search_client=ClinicalTrialsClient())
+        return llm.parse_question(
+            text,
+            search_client=ClinicalTrialsClient(),
+            epmc_client=EuropePmcClient(),
+        )
 
     return parse
 
@@ -176,6 +186,46 @@ def _summary(result: ReviewResult, versions: int, status: str) -> ReviewSummary:
 @app.get("/api/demo", response_model=Question)
 def demo_question() -> Question:
     return demo.GLP1_MACE_QUESTION
+
+
+@app.get("/api/debug/ctgov")
+def debug_ctgov() -> dict:
+    """TEMPORARY: probe which CT.gov request shapes Akamai 403s from this host.
+
+    Isolates whether the block keys on an NCT-id search term or on requesting
+    the (large) resultsSection field. Removed once the fetch strategy is fixed.
+    """
+    import httpx as _httpx
+
+    base = "https://clinicaltrials.gov/api/v2"
+    hdr = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json",
+    }
+    variants = {
+        "V1_term_obesity_protoOnly": {"query.term": "obesity", "fields": "protocolSection", "pageSize": 5},
+        "V2_term_obesity_withResults": {"query.term": "obesity", "fields": "protocolSection,resultsSection", "pageSize": 5},
+        "V3_term_nct_protoOnly": {"query.term": "NCT01147250", "fields": "protocolSection", "pageSize": 5},
+        "V4_term_nct_withResults": {"query.term": "NCT01147250", "fields": "protocolSection,resultsSection", "pageSize": 5},
+        "V5_filterIds_withResults": {"filter.ids": "NCT01147250", "fields": "protocolSection,resultsSection", "pageSize": 5},
+    }
+    out: dict = {}
+    for name, params in variants.items():
+        try:
+            r = _httpx.get(f"{base}/studies", params=params, headers=hdr, timeout=30)
+            out[name] = {"status": r.status_code, "n": len(r.json().get("studies", [])) if r.status_code == 200 else None}
+        except Exception as e:  # noqa: BLE001
+            out[name] = {"error": type(e).__name__, "msg": str(e)[:120]}
+    # Direct per-id endpoint for completeness.
+    try:
+        r = _httpx.get(f"{base}/studies/NCT01147250", headers=hdr, timeout=30)
+        out["V6_direct_studies_id"] = {"status": r.status_code}
+    except Exception as e:  # noqa: BLE001
+        out["V6_direct_studies_id"] = {"error": type(e).__name__, "msg": str(e)[:120]}
+    return out
 
 
 @app.post("/api/parse", response_model=Question)

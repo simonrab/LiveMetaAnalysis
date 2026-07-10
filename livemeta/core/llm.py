@@ -95,14 +95,15 @@ def _llm_parse(text: str, client) -> ParsedPICO:
 
 
 def parse_question(
-    text: str, llm_client=None, search_client=None
+    text: str, llm_client=None, search_client=None, epmc_client=None
 ) -> Question:
     """Parse a free-text clinical question into a Question (PICO + candidate trials).
 
     The locked demo short-circuits to the recorded question so the live demo is
     deterministic and keyless. Otherwise Claude structures the PICO (when a client
-    or ANTHROPIC_API_KEY is available), then ClinicalTrials.gov search fills in the
-    candidate trial ids. Any failure degrades to a best-effort parse.
+    or ANTHROPIC_API_KEY is available), then a multi-source search
+    (ClinicalTrials.gov + Europe PMC, when an `epmc_client` is supplied) fills in
+    the candidate ids. Any failure degrades to a best-effort parse.
     """
     if _matches_demo(text):
         return demo.GLP1_MACE_QUESTION.model_copy(update={"text": text})
@@ -135,7 +136,9 @@ def parse_question(
     trial_ids: list[str] = []
     if search_client is not None:
         try:
-            candidates = search_mod.search_trials(pico, client=search_client)
+            candidates = search_mod.search_trials(
+                pico, client=search_client, epmc_client=epmc_client
+            )
             trial_ids = [c.nct_id for c in candidates]
         except Exception:
             trial_ids = []
