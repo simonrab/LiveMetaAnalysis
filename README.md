@@ -33,10 +33,11 @@ The reference question is GLP-1 receptor agonists versus placebo for major adver
 
 ## Architecture
 
-There are two front ends over one core:
+There are three front ends over one core:
 
 - An MCP server (`livemeta/mcp/server.py`) exposing 19 tools, so Claude can drive the whole workflow over stdio.
 - A web platform: a FastAPI backend (`livemeta/api/app.py`) serving a React and Vite front end (`web/`). It runs a review end to end: ask a question, watch the pipeline run, inspect the evidence ledger, verify extractions, review risk of bias and GRADE, read the report, and see the competitive-landscape board.
+- A command-line interface (`livemeta/cli/`, the `livemeta` command). Full parity with the other two: run a review, read the report with an ASCII forest plot, search, list history, drive the living update, and record every human-in-the-loop decision — all scriptable and runnable fully offline against recorded fixtures.
 
 The product is called Strata, but the codebase still uses the earlier `livemeta` name for the Python package, the `livemeta-mcp` command, and the `LIVEMETA_*` environment variables.
 
@@ -57,7 +58,8 @@ livemeta/
 │   ├── store.py         # snapshot store (SQLite)
 │   └── store_pg.py      # Postgres store (deployed)
 ├── mcp/server.py    # 19 MCP tools
-└── api/app.py       # FastAPI backend + websocket pipeline events
+├── api/app.py       # FastAPI backend + websocket pipeline events
+└── cli/             # the `livemeta` command line (argparse over the same core)
 
 web/                 # React + TypeScript + Vite front end
 tests/               # pytest + pytest-bdd (Gherkin .feature scenarios)
@@ -145,6 +147,31 @@ Register it with an MCP client (for example, Claude Code):
 }
 ```
 
+### Run from the command line
+
+The `livemeta` command runs the whole review from the terminal over the same core as the web app and the MCP server. It works fully offline against the recorded CT.gov fixtures — pass `--fixtures tests/fixtures` (which implies `--offline`) so no run touches the network.
+
+```bash
+# Run the locked GLP-1/MACE demo and read the report (with an ASCII forest plot)
+livemeta run --demo --fixtures tests/fixtures
+
+# Seed the 7-trial baseline, then inject the 8th trial and see the conclusion diff
+livemeta seed-demo --fixtures tests/fixtures
+livemeta update glp1-mace NCT03496298 --fixtures tests/fixtures
+
+# Read a saved review and also write a matplotlib forest-plot PNG
+livemeta report glp1-mace --plot forest.png
+
+# Human-in-the-loop: flag a trial's extraction and re-pool; confirm a RoB domain
+livemeta decision glp1-mace NCT01147250 flagged --reason "unclear arm"
+livemeta rob-decision glp1-mace NCT01179048 D1
+
+# Machine-readable output for scripting (a single JSON document on stdout)
+livemeta run --demo --fixtures tests/fixtures --json | python -m json.tool
+```
+
+Every subcommand accepts `--json`. Exit codes are scriptable: `0` success (a pooled estimate was produced or a read succeeded), `4` honest abstention (the run completed but the data was too thin or too heterogeneous to pool), and `5` for an unknown review. Without `ANTHROPIC_API_KEY`, the LLM steps are reported as PENDING rather than fabricated, exactly as in the web app. Run `livemeta --help` for the full command list.
+
 ## Testing
 
 The code is written test-first, with pytest-bdd scenarios for the pipeline spine and the main user journeys. The validation gate and the stats engine have the heaviest coverage.
@@ -154,7 +181,7 @@ pytest                       # backend: pytest + pytest-bdd
 npm --prefix web run test    # frontend: Vitest + React Testing Library
 ```
 
-Feature files are in `tests/features/` (pipeline, homogeneity, appraisal, human review, living update, MCP update).
+Feature files are in `tests/features/` (pipeline, homogeneity, appraisal, human review, living update, MCP update, CLI).
 
 ## Scope
 

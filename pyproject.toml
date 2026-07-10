@@ -4,6 +4,7 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 livemeta-mcp = "livemeta.mcp.server:main"
+livemeta = "livemeta.cli.app:main"
 
 [project]
 name = "livemeta"
