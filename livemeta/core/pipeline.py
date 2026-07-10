@@ -29,7 +29,9 @@ from .sources.router import SourceRouter
 from .stats import engine as stats_engine
 from .stats import sensitivity as sensitivity_mod
 from . import extract as extract_mod
+from . import prisma as prisma_mod
 from . import rob as rob_mod
+from . import screen as screen_mod
 from . import validate as validate_mod
 
 FetchStudy = Callable[[str], dict]
@@ -89,6 +91,17 @@ def _pool_inputs(
     return [e.point for e in passed if e.point]
 
 
+def _finalize(result: ReviewResult) -> ReviewResult:
+    """Attach the deterministic PRISMA record-flow to a terminal review.
+
+    Every review that reaches a `done`/return path gets its flow diagram built
+    from its own extractions and validations, so the audit trail and the report
+    can always account for how the search narrowed to the pooled set.
+    """
+    result.prisma = prisma_mod.build_prisma(result)
+    return result
+
+
 def interpret_i2(i2: float) -> str:
     """Cochrane interpretation bands (avoid rigid thresholds)."""
     if i2 <= 40:
@@ -98,6 +111,16 @@ def interpret_i2(i2: float) -> str:
     if i2 <= 90:
         return "substantial"
     return "considerable"
+
+
+def heterogeneity_clause(i2: float) -> str:
+    """A grammatical clause about heterogeneity for prose summaries. The lowest
+    Cochrane band ("might not be important") is a hedge, not an adjective, so it
+    can't follow "was"; the other bands read naturally as "was <band>"."""
+    band = interpret_i2(i2)
+    if i2 <= 40:
+        return "heterogeneity might not be important"
+    return f"heterogeneity was {band}"
 
 
 def pool_direction(pool: PoolResult) -> str:
@@ -123,13 +146,13 @@ def summarize(question: Question, pool: PoolResult) -> str:
     ]
     significant = pool_significant(pool)
     strength = "a statistically significant" if significant else "no statistically significant"
-    interp = interpret_i2(pool.i2)
+    clause = heterogeneity_clause(pool.i2)
     ci_kind = "Hartung-Knapp" if pool.ci_method.value == "hksj" else "Wald"
     return (
         f"Pooling {pool.k} trials, {question.pico.intervention} {direction} "
         f"{question.pico.outcome} versus {question.pico.comparator}, with {strength} "
-        f"effect: {measure} {est:.2f} (95% CI {lo:.2f}-{hi:.2f}, {ci_kind}). "
-        f"Heterogeneity was {interp} (I² = {pool.i2:.0f}%, τ² = {pool.tau2:.3f})."
+        f"effect: {measure} {est:.2f} (95% CI {lo:.2f} to {hi:.2f}, {ci_kind}). "
+        f"{clause.capitalize()} (I² = {pool.i2:.0f}%, τ² = {pool.tau2:.3f})."
     )
 
 
@@ -168,6 +191,7 @@ def run_review(
     question: Question,
     fetch_study: FetchStudy | None = None,
     llm_client=None,
+    screening_overrides: dict | None = None,
 ) -> Iterator[PipelineEvent]:
     fetch_study = fetch_study or SourceRouter().fetch
 
@@ -184,10 +208,11 @@ def run_review(
 
     # Fetch (I/O-bound) over a bounded thread pool rather than one-at-a-time, and
     # tolerate a per-trial retrieval failure instead of aborting the whole run.
-    # Extractions are reassembled in the original order afterwards, so the pool,
-    # forest plot, and tests stay deterministic regardless of completion timing.
+    # De-duplicate first (the PRISMA screen step), so a repeated id is fetched,
+    # screened, and pooled once.
+    unique_ids = prisma_mod.dedupe_preserving_order(question.trial_ids)
     studies_by_id: dict[str, dict] = {}
-    extractions_by_id: dict[str, TrialExtraction] = {}
+    fetch_errors: dict[str, Exception] = {}
 
     def _fetch(nct: str):
         try:
@@ -195,27 +220,55 @@ def run_review(
         except Exception as exc:  # reported per-trial below; never aborts the run
             return nct, None, exc
 
-    workers = min(_FETCH_CONCURRENCY, max(1, len(question.trial_ids)))
+    workers = min(_FETCH_CONCURRENCY, max(1, len(unique_ids)))
     with ThreadPoolExecutor(max_workers=workers) as pool_ex:
-        futures = [pool_ex.submit(_fetch, nct) for nct in question.trial_ids]
+        futures = [pool_ex.submit(_fetch, nct) for nct in unique_ids]
         for future in as_completed(futures):
             nct, study, err = future.result()
             if study is None:
-                ext = _failed_extraction(nct, err)
+                fetch_errors[nct] = err
             else:
                 studies_by_id[nct] = study
-                ext = extract_mod.extract_any(study, question.measure, llm_client=llm_client)
-            extractions_by_id[nct] = ext
-            msg = (
-                f"{ext.label}: flagged for review ({ext.flag_reason})"
-                if ext.flagged
-                else f"{ext.label}: {_effect_summary(ext)}"
-            )
-            yield PipelineEvent(stage="extract", message=msg, data=ext.model_dump())
 
-    extractions = [
-        extractions_by_id[nct] for nct in question.trial_ids if nct in extractions_by_id
-    ]
+    # Screen for clinical eligibility *before* extraction: only trials judged
+    # eligible for the question's PICO are extracted and pooled; the rest are
+    # recorded (with a reason and, when Claude judged it, a source quote) so the
+    # PRISMA funnel shows a real screening stage. A retrieval failure can't be
+    # screened — it has no record — and falls through as a not-retrieved report.
+    screening = screen_mod.screen_candidates(
+        question, studies_by_id, llm_client=llm_client, overrides=screening_overrides
+    )
+    included_ids = {d.study_id for d in screening if d.decision == "included"}
+    n_excluded = len(screening) - len(included_ids)
+    yield PipelineEvent(
+        stage="screen",
+        message=(
+            f"{len(included_ids)} of {len(screening)} trials eligible"
+            + (f"; {n_excluded} excluded at screening." if n_excluded else ".")
+        ),
+        data={"screening": [d.model_dump() for d in screening]},
+    )
+
+    # Extract only the screened-in trials (and surface retrieval failures), in the
+    # original candidate order so the pool, forest plot, and tests stay
+    # deterministic regardless of fetch completion timing.
+    extractions: list[TrialExtraction] = []
+    for nct in unique_ids:
+        if nct in fetch_errors:
+            ext = _failed_extraction(nct, fetch_errors[nct])
+        elif nct in included_ids:
+            ext = extract_mod.extract_any(
+                studies_by_id[nct], question.measure, llm_client=llm_client
+            )
+        else:
+            continue  # screened out — recorded in `screening`, never pooled
+        extractions.append(ext)
+        msg = (
+            f"{ext.label}: flagged for review ({ext.flag_reason})"
+            if ext.flagged
+            else f"{ext.label}: {_effect_summary(ext)}"
+        )
+        yield PipelineEvent(stage="extract", message=msg, data=ext.model_dump())
 
     validations = validate_mod.validate_extractions(extractions)
     passed_ids = {v.study_id for v in validations if v.passed}
@@ -235,8 +288,13 @@ def run_review(
         yield PipelineEvent(
             stage="done",
             message="Too few valid trials to pool — abstaining.",
-            data=ReviewResult(
-                question=question, extractions=extractions, validations=validations
+            data=_finalize(
+                ReviewResult(
+                    question=question,
+                    screening=screening,
+                    extractions=extractions,
+                    validations=validations,
+                )
             ).model_dump(),
         )
         return
@@ -263,12 +321,15 @@ def run_review(
         yield PipelineEvent(
             stage="done",
             message=summary,
-            data=ReviewResult(
-                question=question,
-                extractions=extractions,
-                validations=validations,
-                summary=summary,
-                diversity=diversity,
+            data=_finalize(
+                ReviewResult(
+                    question=question,
+                    screening=screening,
+                    extractions=extractions,
+                    validations=validations,
+                    summary=summary,
+                    diversity=diversity,
+                )
             ).model_dump(),
         )
         return
@@ -309,26 +370,34 @@ def run_review(
     yield PipelineEvent(
         stage="done",
         message=summary,
-        data=ReviewResult(
-            question=question,
-            extractions=extractions,
-            validations=validations,
-            pool=pool,
-            summary=summary,
-            rob=rob,
-            grade=grade,
-            sensitivity=sensitivity,
-            diversity=diversity,
+        data=_finalize(
+            ReviewResult(
+                question=question,
+                screening=screening,
+                extractions=extractions,
+                validations=validations,
+                pool=pool,
+                summary=summary,
+                rob=rob,
+                grade=grade,
+                sensitivity=sensitivity,
+                diversity=diversity,
+            )
         ).model_dump(),
     )
 
 
 def run_review_collect(
-    question: Question, fetch_study: FetchStudy | None = None, llm_client=None
+    question: Question,
+    fetch_study: FetchStudy | None = None,
+    llm_client=None,
+    screening_overrides: dict | None = None,
 ) -> ReviewResult:
     """Drain the pipeline and return the final ReviewResult."""
     result = ReviewResult(question=question)
-    for event in run_review(question, fetch_study, llm_client=llm_client):
+    for event in run_review(
+        question, fetch_study, llm_client=llm_client, screening_overrides=screening_overrides
+    ):
         if event.stage == "done" and event.data is not None:
             result = ReviewResult.model_validate(event.data)
     return result
@@ -387,16 +456,19 @@ def repool_with_decisions(
         grade = grade_mod.grade_outcome(result.question, pool, rob)
         loo = sensitivity_mod.leave_one_out(inputs, measure=result.question.measure)
 
-    return ReviewResult(
-        question=result.question,
-        extractions=extractions,
-        validations=validations,
-        pool=pool,
-        summary=summary,
-        rob=rob,
-        grade=grade,
-        sensitivity=loo,
-        diversity=result.diversity,
+    return _finalize(
+        ReviewResult(
+            question=result.question,
+            screening=result.screening,
+            extractions=extractions,
+            validations=validations,
+            pool=pool,
+            summary=summary,
+            rob=rob,
+            grade=grade,
+            sensitivity=loo,
+            diversity=result.diversity,
+        )
     )
 
 
@@ -434,12 +506,15 @@ def repool_with_diversity(result: ReviewResult, decision) -> ReviewResult:
     )
 
     if pool is None:
-        return ReviewResult(
-            question=result.question,
-            extractions=extractions,
-            validations=validations,
-            summary="Too few valid trials to pool — abstaining.",
-            diversity=diversity,
+        return _finalize(
+            ReviewResult(
+                question=result.question,
+                screening=result.screening,
+                extractions=extractions,
+                validations=validations,
+                summary="Too few valid trials to pool — abstaining.",
+                diversity=diversity,
+            )
         )
 
     summary = summarize(result.question, pool)
@@ -449,14 +524,17 @@ def repool_with_diversity(result: ReviewResult, decision) -> ReviewResult:
     grade = grade_mod.grade_outcome(result.question, pool, rob)
     loo = sensitivity_mod.leave_one_out(inputs, measure=result.question.measure)
 
-    return ReviewResult(
-        question=result.question,
-        extractions=extractions,
-        validations=validations,
-        pool=pool,
-        summary=summary,
-        rob=rob,
-        grade=grade,
-        sensitivity=loo,
-        diversity=diversity,
+    return _finalize(
+        ReviewResult(
+            question=result.question,
+            screening=result.screening,
+            extractions=extractions,
+            validations=validations,
+            pool=pool,
+            summary=summary,
+            rob=rob,
+            grade=grade,
+            sensitivity=loo,
+            diversity=diversity,
+        )
     )
