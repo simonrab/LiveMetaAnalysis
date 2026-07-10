@@ -76,6 +76,19 @@ describe("HowItWorks", () => {
     expect(within(living).getByText(/estimate updated/i)).toBeInTheDocument();
   });
 
+  it("explains the competitive landscape and that every cell is backed by pooled evidence", () => {
+    renderPage();
+    const landscape = screen.getByRole("region", { name: /landscape/i });
+    // The board maps assets by development stage.
+    expect(within(landscape).getByText("Assets by development phase")).toBeInTheDocument();
+    // Every cell carries an honest evidence badge in one of three states.
+    expect(within(landscape).getByText("Pooled estimate")).toBeInTheDocument();
+    expect(within(landscape).getByText("Gate pending")).toBeInTheDocument();
+    expect(within(landscape).getByText("Abstained")).toBeInTheDocument();
+    // The two halves are one system: a new trial moves the standing, not just a number.
+    expect(within(landscape).getByText(/competitive standing/i)).toBeInTheDocument();
+  });
+
   it("states what the tool refuses to do", () => {
     renderPage();
     const refusals = screen.getByRole("region", { name: /refuses/i });

@@ -300,6 +300,173 @@ function LivingDemo() {
   );
 }
 
+// ── Competitive landscape ──────────────────────────────────────────────────
+
+// The three honest states a landscape cell's evidence badge can take, mirroring
+// EvidenceBadgeView: a committed pooled estimate, a withheld pool waiting on a
+// homogeneity confirmation, or an abstention when data is too thin.
+type BadgeState =
+  | { kind: "pooled"; text: string; accent?: boolean }
+  | { kind: "gate"; text: string }
+  | { kind: "abstained"; text: string };
+
+function MiniBadge({ badge }: { badge: BadgeState }) {
+  if (badge.kind === "gate") {
+    return (
+      <span className="mt-1 flex items-center gap-1 rounded-sm border border-risk-some bg-card-light px-1.5 py-0.5 text-[10px] font-medium text-risk-some">
+        <Icon name="gpp_maybe" size={11} />
+        {badge.text}
+      </span>
+    );
+  }
+  if (badge.kind === "abstained") {
+    return (
+      <span className="mt-1 inline-flex items-center gap-1 rounded-sm bg-surface-container px-1.5 py-0.5 text-[10px] font-medium text-outline">
+        <Icon name="do_not_disturb_on" size={11} />
+        {badge.text}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`mt-1 block rounded-sm px-1.5 py-1 font-mono text-[10px] font-semibold leading-tight ${
+        badge.accent
+          ? "bg-risk-low-container text-risk-low"
+          : "bg-surface-container-high text-ink-muted-light"
+      }`}
+    >
+      {badge.text}
+    </span>
+  );
+}
+
+function MiniCard({
+  asset,
+  sponsor,
+  badge,
+  highlight,
+}: {
+  asset: string;
+  sponsor: string;
+  badge: BadgeState;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-md p-2 ${
+        highlight ? "border border-accent bg-accent-container/40" : "hairline bg-card-light"
+      }`}
+    >
+      <p className="text-[12px] font-medium leading-tight text-ink-light">{asset}</p>
+      <p className="truncate text-[10px] text-ink-muted-light">{sponsor}</p>
+      <MiniBadge badge={badge} />
+    </div>
+  );
+}
+
+const BOARD: {
+  phase: string;
+  cards: { asset: string; sponsor: string; badge: BadgeState; highlight?: boolean }[];
+}[] = [
+  {
+    phase: "Phase 2",
+    cards: [
+      {
+        asset: "Orforglipron",
+        sponsor: "Eli Lilly",
+        badge: { kind: "abstained", text: "Evidence abstained" },
+      },
+    ],
+  },
+  {
+    phase: "Phase 3",
+    cards: [
+      {
+        asset: "Retatrutide",
+        sponsor: "Eli Lilly",
+        badge: { kind: "gate", text: "Gate · pending confirmation" },
+      },
+      {
+        asset: "Tirzepatide",
+        sponsor: "Eli Lilly",
+        badge: { kind: "pooled", text: "RR 0.78 [0.64, 0.94]", accent: true },
+        highlight: true,
+      },
+    ],
+  },
+  {
+    phase: "Approved",
+    cards: [
+      {
+        asset: "Semaglutide",
+        sponsor: "Novo Nordisk",
+        badge: { kind: "pooled", text: "RR 0.86 [0.79, 0.94]", accent: true },
+      },
+    ],
+  },
+];
+
+function LandscapeDemo() {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-md hairline bg-surface-container-low p-3">
+        <p className="mb-2 px-1 text-label-caps uppercase text-ink-muted-light">
+          Assets by development phase
+        </p>
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {BOARD.map((col) => (
+            <div key={col.phase} className="flex w-44 shrink-0 flex-col">
+              <div className="mb-2 flex items-center justify-between px-1">
+                <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted-light">
+                  {col.phase}
+                </span>
+                <span className="text-[11px] font-medium text-ink-muted-light">
+                  {col.cards.length}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {col.cards.map((c) => (
+                  <MiniCard key={c.asset} {...c} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-muted-light">
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-sm bg-risk-low" />
+          <span>
+            <span className="font-medium text-ink-light">Pooled estimate</span> — the committed
+            effect and GRADE certainty, clickable through to the full review.
+          </span>
+        </div>
+        <div className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-muted-light">
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-sm bg-risk-some" />
+          <span>
+            <span className="font-medium text-ink-light">Gate pending</span> — pooling withheld
+            until a reviewer confirms the trials are similar enough to combine.
+          </span>
+        </div>
+        <div className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-muted-light">
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-sm bg-outline" />
+          <span>
+            <span className="font-medium text-ink-light">Abstained</span> — too few trials or no
+            poolable data. Never a fabricated number.
+          </span>
+        </div>
+      </div>
+
+      <p className="flex items-start gap-2 rounded-md border border-accent-border bg-accent-container/40 px-3 py-2.5 text-[13px] leading-relaxed text-ink-light">
+        <Icon name="insights" size={16} className="mt-0.5 shrink-0 text-accent" />
+        One new trial moves both the pooled estimate and the competitive standing at once — which
+        is why the engine and the landscape are one system, not two tools.
+      </p>
+    </div>
+  );
+}
+
 // ── Refusals ───────────────────────────────────────────────────────────────
 
 const REFUSALS = [
@@ -338,7 +505,8 @@ export function HowItWorks() {
       <div className="mb-8">
         <h1 className="font-sans text-display-lg text-ink-light">How Strata works</h1>
         <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-ink-muted-light">
-          A living meta-analysis you can audit line by line. One rule holds it together:{" "}
+          A living meta-analysis you can audit line by line, feeding a competitive landscape that
+          stays current because the evidence underneath it does. One rule holds it together:{" "}
           <span className="font-medium text-ink-light">
             pool only numbers that can be traced to a source and pass validation
           </span>{" "}
@@ -390,6 +558,14 @@ export function HowItWorks() {
           lead="A published meta-analysis is out of date the moment it prints. Here, a new readout triggers a re-pool, and the diff tells you whether the estimate — or the conclusion — moved."
         >
           <LivingDemo />
+        </Section>
+
+        <Section
+          label="The competitive landscape"
+          title="From one answer to the whole race"
+          lead="Those living answers roll up into a competitive board: assets mapped by development phase, indication, and time. Unlike an ordinary intelligence dashboard, every cell is backed by that same pooled, auditable evidence — so you see who is ahead on the actual data, not just who is in the race."
+        >
+          <LandscapeDemo />
         </Section>
 
         <Section
