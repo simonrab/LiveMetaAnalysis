@@ -163,3 +163,76 @@ def test_asset_timeline_filters_by_name(tmp_path):
     service.get_landscape(store, "T2D", search_pipeline=_search(studies))
     timeline = service.asset_timeline(store, "T2D", "Semaglutide")
     assert timeline and all(e.asset_name == "Semaglutide" for e in timeline)
+
+
+# --- company pipeline (cross-condition) -------------------------------------
+
+
+class _FakeOpenFda:
+    def __init__(self, approvals):
+        self._approvals = approvals
+
+    def approvals_by_sponsor(self, sponsor, limit=50):
+        return list(self._approvals)
+
+
+def _approval(drug, app_no="NDA1"):
+    from livemeta.core.ci.schema import RegulatoryApproval
+
+    return RegulatoryApproval(drug=drug, sponsor="Novo Nordisk", application_number=app_no)
+
+
+def test_company_pipeline_spans_indications_and_keeps_real_conditions(tmp_path):
+    store = SnapshotStore(data_dir=tmp_path)
+    # One sponsor, one asset, but two different indications — the whole point of
+    # the cross-condition view is that both show, with their real condition names.
+    studies = [
+        _study(nct="NCT1", conditions=("Type 2 Diabetes",), phases=("PHASE3",),
+               interventions=(("DRUG", "Semaglutide"),)),
+        _study(nct="NCT2", conditions=("Obesity",), phases=("PHASE2",),
+               interventions=(("DRUG", "Semaglutide"),)),
+        _study(nct="NCT3", conditions=("Heart Failure",), phases=("PHASE1",),
+               interventions=(("DRUG", "Ziltivekimab"),)),
+    ]
+    cp = service.company_pipeline(
+        store, "Novo Nordisk", search=_search(studies),
+        openfda=_FakeOpenFda([_approval("Semaglutide")]),
+    )
+    assert cp.sponsor == "Novo Nordisk"
+    assert set(cp.indications) == {"Type 2 Diabetes", "Obesity", "Heart Failure"}
+    assert set(cp.assets) == {"Semaglutide", "Ziltivekimab"}
+    # The same asset appears once per indication (a cell each), at that trial's phase.
+    sema = {(c.indication, c.current_phase) for c in cp.cells if c.asset_name == "Semaglutide"}
+    assert (Phase.PHASE_3 in {p for _, p in sema}) and (Phase.PHASE_2 in {p for _, p in sema})
+    assert [a.drug for a in cp.approvals] == ["Semaglutide"]
+
+
+def test_company_pipeline_caches_and_as_of_filters(tmp_path):
+    store = SnapshotStore(data_dir=tmp_path)
+    calls = {"n": 0}
+
+    def search(sponsor):
+        calls["n"] += 1
+        return [_study(nct="NCT1", start="2015-03", phases=("PHASE3",),
+                       interventions=(("DRUG", "Semaglutide"),))]
+
+    service.company_pipeline(store, "Novo Nordisk", search=search)
+    service.company_pipeline(store, "Novo Nordisk", search=search)
+    assert calls["n"] == 1  # second call served from the store's sponsor partition
+    early = service.company_pipeline(store, "Novo Nordisk", as_of="2014-01-01")
+    assert early.cells == []  # before the 2015 start, nothing had happened
+
+
+def test_company_pipeline_degrades_when_sources_unavailable(tmp_path):
+    store = SnapshotStore(data_dir=tmp_path)
+
+    def boom(sponsor):
+        raise RuntimeError("403 Forbidden from CT.gov")
+
+    class _BoomFda:
+        def approvals_by_sponsor(self, sponsor, limit=50):
+            raise RuntimeError("openFDA down")
+
+    cp = service.company_pipeline(store, "Novo Nordisk", search=boom, openfda=_BoomFda())
+    assert cp.cells == [] and cp.approvals == []  # no crash
+    assert any("unavailable" in n for n in cp.notes)

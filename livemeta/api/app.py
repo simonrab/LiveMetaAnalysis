@@ -30,6 +30,7 @@ from ..core import demo, living, llm, pipeline, rob as rob_mod
 from ..core.ci import service as ci_service
 from ..core.ci.schema import (
     AssetDossier,
+    CompanyPipeline,
     DevelopmentEvent,
     IndicationMap,
     Landscape,
@@ -118,6 +119,11 @@ def get_ci_asset_search():
 def get_ci_indication_search():
     """Injectable CT.gov search by condition (an indication's trials) for the map."""
     return ClinicalTrialsClient().search_by_condition
+
+
+def get_ci_company_search():
+    """Injectable CT.gov search by lead sponsor (a company's trials) for the pipeline."""
+    return ClinicalTrialsClient().search_by_sponsor
 
 
 def get_openfda():
@@ -472,6 +478,26 @@ def link_landscape(
         store, req.condition, req.asset_name, req.indication, req.question_id
     )
     return ci_service.get_landscape(store, req.condition)
+
+
+@app.get("/api/company/{name:path}", response_model=CompanyPipeline)
+def company_pipeline(
+    name: str,
+    as_of: str | None = None,
+    refresh: bool = False,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_company_search),
+    openfda=Depends(get_openfda),
+) -> CompanyPipeline:
+    """A pharma company's entire pipeline: every asset, at every phase, across all
+    indications, plus its FDA approvals — reconstructed as of `as_of`.
+
+    `{name:path}` so sponsor names with slashes/spaces resolve here instead of
+    falling through to the SPA fallback. `refresh=true` re-pulls the sponsor's
+    trials from the live lead-sponsor search."""
+    return ci_service.company_pipeline(
+        store, name, as_of=as_of, search=search, openfda=openfda, refresh=refresh
+    )
 
 
 @app.get("/api/asset/{name}", response_model=AssetDossier)

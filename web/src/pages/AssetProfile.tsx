@@ -46,7 +46,17 @@ export function AssetProfile() {
       <h1 className="font-sans text-display-lg text-ink-light">{decodeURIComponent(name)}</h1>
       <p className="mt-1 font-serif text-[16px] text-ink-muted-light">
         Development timeline in {condition || "all indications"}
-        {sponsor ? ` · ${sponsor}` : ""}.
+        {sponsor ? " · " : ""}
+        {sponsor && (
+          <Link
+            to={`/company/${encodeURIComponent(sponsor)}`}
+            className="text-accent hover:underline"
+            title={`See ${sponsor}'s entire pipeline`}
+          >
+            {sponsor}
+          </Link>
+        )}
+        .
       </p>
 
       {error && (

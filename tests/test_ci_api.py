@@ -7,7 +7,14 @@ a tmp SQLite db, so the endpoints exercise the real service end to end offline.
 import pytest
 from fastapi.testclient import TestClient
 
-from livemeta.api.app import app, get_ci_search, get_store
+from livemeta.api.app import (
+    app,
+    get_ci_company_search,
+    get_ci_search,
+    get_openfda,
+    get_store,
+)
+from livemeta.core.ci.schema import RegulatoryApproval
 from livemeta.core.store import SnapshotStore
 from tests.test_ci_ctgov import _study
 
@@ -146,3 +153,51 @@ def test_ingest_endpoint_without_key_is_a_noop(client, monkeypatch):
     )
     assert r.status_code == 200
     assert set(r.json()["assets"]) == {"Semaglutide", "Tirzepatide"}
+
+
+# --- company pipeline endpoint ----------------------------------------------
+
+
+@pytest.fixture
+def company_client(tmp_path):
+    store = SnapshotStore(data_dir=tmp_path)
+    studies = [
+        _study(nct="NCT1", conditions=("Type 2 Diabetes",), phases=("PHASE3",),
+               interventions=(("DRUG", "Semaglutide"),)),
+        _study(nct="NCT2", conditions=("Obesity",), phases=("PHASE2",),
+               interventions=(("DRUG", "Semaglutide"),)),
+    ]
+    approvals = [
+        RegulatoryApproval(drug="Semaglutide", sponsor="Novo Nordisk",
+                           application_number="NDA209637", brand_names=["OZEMPIC"]),
+    ]
+
+    class _Fda:
+        def approvals_by_sponsor(self, sponsor, limit=50):
+            return approvals
+
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_ci_company_search] = lambda: (lambda sponsor: studies)
+    app.dependency_overrides[get_openfda] = lambda: _Fda()
+    yield TestClient(app)
+    for dep in (get_store, get_ci_company_search, get_openfda):
+        app.dependency_overrides.pop(dep, None)
+
+
+def test_company_endpoint_returns_cross_indication_pipeline(company_client):
+    r = company_client.get("/api/company/Novo Nordisk")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["sponsor"] == "Novo Nordisk"
+    assert set(body["indications"]) == {"Type 2 Diabetes", "Obesity"}
+    assert body["assets"] == ["Semaglutide"]
+    assert len(body["cells"]) == 2  # one cell per indication for the same asset
+    assert [a["application_number"] for a in body["approvals"]] == ["NDA209637"]
+
+
+def test_company_endpoint_handles_slash_in_sponsor_name(company_client):
+    # Sponsor names can carry slashes/spaces; the {name:path} route must resolve
+    # them instead of falling through to the SPA fallback.
+    r = company_client.get("/api/company/Novo%20Nordisk")
+    assert r.status_code == 200
+    assert r.json()["sponsor"] == "Novo Nordisk"

@@ -24,6 +24,7 @@ from ..core import extract as extract_mod
 from ..core.ci import service as ci_service
 from ..core.ci.schema import (
     AssetDossier,
+    CompanyPipeline,
     DevelopmentEvent,
     IndicationMap,
     Landscape,
@@ -365,6 +366,25 @@ def track_asset(condition: str, name: str) -> list[DevelopmentEvent]:
         get_store(), condition, search_pipeline=get_client().search_pipeline
     )  # ensure the landscape is seeded before reading the timeline
     return ci_service.asset_timeline(get_store(), condition, name)
+
+
+@mcp.tool()
+def company_pipeline(name: str, as_of: str | None = None) -> CompanyPipeline:
+    """Map a pharma company's entire pipeline across every indication and phase.
+
+    The cross-condition companion to `map_landscape`: pulls every trial the
+    company leads (CT.gov lead-sponsor search), so the same asset can appear in
+    several indications, reconciled over time (`as_of` reconstructs a past
+    pipeline), and joined to the company's openFDA approvals. Readouts and
+    evidence badges come through on the cells exactly as on the condition board.
+    """
+    return ci_service.company_pipeline(
+        get_store(),
+        name,
+        as_of=as_of,
+        search=get_client().search_by_sponsor,
+        openfda=get_openfda(),
+    )
 
 
 @mcp.tool()

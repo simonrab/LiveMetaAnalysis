@@ -369,3 +369,21 @@ class IndicationMap(BaseModel):
     sources: list[Source] = Field(default_factory=list)
     nodes: list[IndicationNode] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+
+
+class CompanyPipeline(BaseModel):
+    """One pharma company's entire pipeline, across all indications and phases.
+
+    The cross-condition sibling of `Landscape`: scoped to a lead sponsor rather
+    than a condition, so a card can appear for the same asset in several
+    indications. Reuses the same `LandscapeCell` (phase, readout, evidence badge)
+    so the board renders identically, and adds the company's FDA `approvals`.
+    """
+
+    sponsor: str
+    as_of: str | None = None
+    assets: list[str] = Field(default_factory=list)
+    indications: list[str] = Field(default_factory=list)
+    cells: list[LandscapeCell] = Field(default_factory=list)
+    approvals: list[RegulatoryApproval] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)

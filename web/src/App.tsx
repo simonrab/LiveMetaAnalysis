@@ -15,6 +15,7 @@ import { Updates } from "./pages/Updates";
 import { AuditTrail } from "./pages/AuditTrail";
 import { SnapshotView } from "./pages/SnapshotView";
 import { CompetitorLandscape } from "./pages/CompetitorLandscape";
+import { CompanyPipeline } from "./pages/CompanyPipeline";
 import { AssetProfile } from "./pages/AssetProfile";
 import { AssetDossier } from "./pages/AssetDossier";
 import { IndicationMap } from "./pages/IndicationMap";
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="/ask" element={<Ask />} />
               <Route path="/how-it-works" element={<HowItWorks />} />
               <Route path="/landscape" element={<CompetitorLandscape />} />
+              <Route path="/company/:name" element={<CompanyPipeline />} />
               <Route path="/landscape/asset/:name" element={<AssetProfile />} />
               <Route path="/asset/:name" element={<AssetDossier />} />
               <Route path="/indication/:name" element={<IndicationMap />} />

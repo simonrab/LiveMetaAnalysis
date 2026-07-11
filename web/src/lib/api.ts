@@ -3,6 +3,7 @@
 
 import type {
   AssetDossier,
+  CompanyPipeline,
   DevelopmentEvent,
   IndicationMap,
   Landscape,
@@ -150,6 +151,18 @@ export async function getLandscape(
   const params = new URLSearchParams({ condition });
   if (asOf) params.set("as_of", asOf);
   return json<Landscape>(await fetch(apiUrl(`/api/landscape?${params.toString()}`)));
+}
+
+export async function getCompanyPipeline(
+  name: string,
+  asOf?: string | null
+): Promise<CompanyPipeline> {
+  const params = new URLSearchParams();
+  if (asOf) params.set("as_of", asOf);
+  const qs = params.toString();
+  return json<CompanyPipeline>(
+    await fetch(apiUrl(`/api/company/${encodeURIComponent(name)}${qs ? `?${qs}` : ""}`))
+  );
 }
 
 export async function getAssetTimeline(

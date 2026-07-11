@@ -24,6 +24,7 @@ from .link import make_evidence_resolver
 from .reconcile import assemble_landscape
 from .schema import (
     AssetDossier,
+    CompanyPipeline,
     DevelopmentEvent,
     EvidenceBadge,
     IndicationMap,
@@ -118,6 +119,69 @@ def asset_timeline(store, condition: str, name: str) -> list[DevelopmentEvent]:
     """One asset's dated event history, for the drill-in."""
     lid = slugify(condition)
     return [e for e in store.load_events(lid) if e.asset_name.lower() == name.lower()]
+
+
+def company_pipeline(
+    store,
+    sponsor: str,
+    as_of: str | None = None,
+    search: Callable[[str], list[dict]] | None = None,
+    openfda=None,
+    refresh: bool = False,
+) -> CompanyPipeline:
+    """One company's entire pipeline across every indication, as of a date.
+
+    The cross-condition sibling of `get_landscape`: events are seeded from a
+    lead-sponsor CT.gov search (not condition-scoped) and stored under a
+    `sponsor:<slug>` partition, so the same asset can surface once per indication.
+    Assembly reuses the deterministic `assemble_landscape` (phase roll-up, readout
+    events, evidence badges via the global link map) unchanged; FDA approvals for
+    the sponsor are attached from openFDA. Every remote source degrades to empty
+    with a note rather than failing the request.
+    """
+    lid = f"sponsor:{slugify(sponsor)}"
+    notes: list[str] = []
+    if refresh and search is not None:
+        store.clear_events(lid)
+    events = store.load_events(lid)
+    if not events and search is not None:
+        try:
+            fresh = [e for s in search(sponsor) for e in study_to_events(s)]
+        except Exception:
+            fresh = []
+            notes.append(
+                "Live ClinicalTrials.gov lookup was unavailable; showing stored events only."
+            )
+        if fresh:
+            store.save_events(lid, fresh)
+            events = store.load_events(lid)
+
+    # Reuse the global (asset, indication) -> question_id link map so a company's
+    # cells still carry any living-evidence badge that was linked on a condition
+    # landscape — the same asset×indication key resolves either way.
+    links = store.load_all_links()
+    resolver = make_evidence_resolver(store)
+    landscape = assemble_landscape(
+        events, as_of, links, evidence_for=resolver, condition=sponsor
+    )
+
+    approvals = []
+    if openfda is not None:
+        try:
+            approvals = openfda.approvals_by_sponsor(sponsor)
+        except Exception:
+            approvals = []
+            notes.append("Live openFDA lookup was unavailable; approvals omitted.")
+
+    return CompanyPipeline(
+        sponsor=sponsor,
+        as_of=as_of,
+        assets=landscape.assets,
+        indications=landscape.indications,
+        cells=landscape.cells,
+        approvals=approvals,
+        notes=landscape.notes + notes,
+    )
 
 
 # --- v2: asset dossiers + indication mapping --------------------------------

@@ -126,6 +126,14 @@ describe("CompetitorLandscape", () => {
     );
   });
 
+  it("links a card's sponsor to that company's entire pipeline", async () => {
+    vi.mocked(getLandscape).mockResolvedValue(landscape);
+    renderPage();
+    const phase3 = await screen.findByTestId("phase-col-phase_3");
+    const sponsorLink = within(phase3).getByRole("link", { name: "Novo Nordisk" });
+    expect(sponsorLink).toHaveAttribute("href", "/company/Novo%20Nordisk");
+  });
+
   it("flags a card where sources conflict", async () => {
     vi.mocked(getLandscape).mockResolvedValue(landscape);
     renderPage();

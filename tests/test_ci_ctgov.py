@@ -154,3 +154,22 @@ def test_search_pipeline_requests_wide_fields_and_returns_raw_studies():
         assert module in fields
     ua = route.calls.last.request.headers.get("user-agent", "")
     assert "Mozilla" in ua  # reuses the browser UA; live backend 403s without it
+
+
+@respx.mock
+def test_search_by_sponsor_scopes_to_lead_sponsor_with_detail_fields():
+    payload = {"studies": [_study(nct="NCT1", sponsor="Novo Nordisk")]}
+    route = respx.get(f"{BASE}/studies").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    studies = ClinicalTrialsClient().search_by_sponsor("Novo Nordisk", page_size=1)
+
+    assert [s["protocolSection"]["identificationModule"]["nctId"] for s in studies] == ["NCT1"]
+    params = route.calls.last.request.url.params
+    # Lead-sponsor scoped: the company pipeline wants trials this company runs,
+    # not every trial that merely names it as a collaborator.
+    assert params.get("query.lead") == "Novo Nordisk"
+    assert params.get("query.cond") is None
+    # Detail fields (geography, results flag) so readouts show on the company view.
+    assert "contactsLocationsModule" in params.get("fields")
+    assert "hasResults" in params.get("fields")

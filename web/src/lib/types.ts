@@ -427,6 +427,19 @@ export interface Landscape {
   notes: string[];
 }
 
+// A company's entire pipeline across every indication (mirrors CompanyPipeline
+// in livemeta.core.ci.schema). Reuses LandscapeCell so the board renders
+// identically, and adds the sponsor's FDA approvals.
+export interface CompanyPipeline {
+  sponsor: string;
+  as_of?: string | null;
+  assets: string[];
+  indications: string[];
+  cells: LandscapeCell[];
+  approvals: RegulatoryApproval[];
+  notes: string[];
+}
+
 // --- v2: source selection, asset dossiers, indication mapping ----------------
 
 export type Source = "ctgov" | "pubmed" | "openfda" | "announcement" | "filing";

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { getAssetDossier } from "../lib/api";
 import type {
   AssetDossier as Dossier,
@@ -12,16 +12,7 @@ import { Icon } from "../components/Icon";
 import { StagePill } from "../components/StagePill";
 import { EvidenceBadgeView } from "../components/EvidenceBadgeView";
 import { SourceToggle, loadSources } from "../components/SourceToggle";
-
-// The human-facing FDA source for an approval is its Drugs@FDA overview page,
-// keyed by the numeric part of the application number (e.g. NDA209637 -> 209637).
-// Returns null when no digits are present, so we render plain text rather than a
-// dead link.
-function drugsAtFdaUrl(applicationNumber: string): string | null {
-  const applNo = applicationNumber.replace(/\D/g, "");
-  if (!applNo) return null;
-  return `https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo=${applNo}`;
-}
+import { ApprovalsList } from "../components/ApprovalsList";
 
 function Bar({ label, value, max }: { label: string; value: number; max: number }) {
   return (
@@ -149,7 +140,18 @@ export function AssetDossier() {
         <div>
           <h1 className="font-sans text-display-lg text-ink-light">{decodeURIComponent(name)}</h1>
           <p className="mt-1 font-serif text-[16px] text-ink-muted-light">
-            {dossier?.asset.sponsor ? `${dossier.asset.sponsor} · ` : ""}
+            {dossier?.asset.sponsor && (
+              <>
+                <Link
+                  to={`/company/${encodeURIComponent(dossier.asset.sponsor)}`}
+                  className="text-accent hover:underline"
+                  title={`See ${dossier.asset.sponsor}'s entire pipeline`}
+                >
+                  {dossier.asset.sponsor}
+                </Link>
+                {" · "}
+              </>
+            )}
             {dossier?.trials.length ?? 0} trials across {dossier?.countries.length ?? 0} countries.
           </p>
         </div>
@@ -215,33 +217,7 @@ export function AssetDossier() {
                 {sources.includes("openfda") ? "." : " (openFDA source is off)."}
               </p>
             ) : (
-              <ul className="space-y-1">
-                {dossier.approvals.map((a) => {
-                  const fdaUrl = drugsAtFdaUrl(a.application_number);
-                  return (
-                    <li key={a.application_number} className="flex items-center gap-2 text-[13px]">
-                      <Icon name="verified" size={15} className="text-accent" />
-                      <span className="font-medium text-ink-light">{a.brand_names.join(", ") || a.drug}</span>
-                      {fdaUrl ? (
-                        <a
-                          href={fdaUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-0.5 font-mono text-accent hover:underline"
-                          title={`View ${a.application_number} on Drugs@FDA`}
-                        >
-                          {a.application_number}
-                          <Icon name="open_in_new" size={13} label="opens on FDA.gov" />
-                        </a>
-                      ) : (
-                        <span className="font-mono text-ink-muted-light">{a.application_number}</span>
-                      )}
-                      {a.approval_date && <span className="text-ink-muted-light">· {a.approval_date}</span>}
-                      {a.marketing_status && <span className="text-ink-muted-light">· {a.marketing_status}</span>}
-                    </li>
-                  );
-                })}
-              </ul>
+              <ApprovalsList approvals={dossier.approvals} />
             )}
           </Section>
 

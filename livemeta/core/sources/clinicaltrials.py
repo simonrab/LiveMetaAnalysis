@@ -165,3 +165,13 @@ class ClinicalTrialsClient:
     def search_by_condition(self, name: str, page_size: int = 1000) -> list[dict]:
         """All trials in an indication (by condition), with the detail fields."""
         return self._search_detail("query.cond", name, page_size)
+
+    def search_by_sponsor(self, name: str, page_size: int = 1000) -> list[dict]:
+        """Every trial a company runs, scoped to lead sponsor (`query.lead`).
+
+        Powers the cross-condition company pipeline: unlike `search_pipeline`
+        (one condition) this pulls the sponsor's whole portfolio across every
+        indication. Lead-sponsor, not sponsor/collaborator, so a company's board
+        isn't flooded with trials it merely co-funds. Carries the detail fields so
+        readouts (results flag) and geography come through."""
+        return self._search_detail("query.lead", name, page_size)
