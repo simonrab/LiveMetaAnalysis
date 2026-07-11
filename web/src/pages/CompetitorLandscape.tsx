@@ -114,9 +114,9 @@ export function CompetitorLandscape() {
 
       <p className="mt-4 flex items-center gap-2 text-[12px] text-ink-muted-light">
         <Icon name="info" size={16} />
-        Stages come from ClinicalTrials.gov with full provenance; a linked card carries its
-        review's living pooled estimate, GRADE, and homogeneity-gate state. Click a sponsor to see
-        that company's entire pipeline.
+        Each drug's phase is read from ClinicalTrials.gov, and every stage links back to its source
+        trial. Cards linked to a saved meta-analysis also show its pooled result. Click a sponsor to
+        see that company's entire pipeline.
       </p>
     </div>
   );
