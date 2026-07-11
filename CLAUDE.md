@@ -29,6 +29,8 @@ All code, backend and frontend, is written test-first. No production module befo
 ## Architecture
 Build as an MCP server so Claude can drive the workflow, plus a fully functioning web UI platform that runs the whole review end to end: ask a question, watch the pipeline execute, inspect the evidence ledger, verify extractions, review risk of bias and GRADE, and read the report with its forest plot. The UI is a first-class deliverable, not a demo shim. The screens in `stitch_livemeta_precision_evidence_system/` are the reference design to build against.
 
+There is also a command-line front end (`livemeta/cli/`, the `livemeta` command) with full parity: run, search, report, history, living update, and every human-in-the-loop decision. All three front ends — MCP server, web platform, and CLI — are thin wrappers over the same shared core (`livemeta/core/pipeline.py`), so they cannot diverge. The report renders an ASCII forest plot and can export a matplotlib PNG (`--plot`); every subcommand supports `--json` and runs fully offline against recorded fixtures (`--fixtures`).
+
 MCP tools:
 - `search_trials(pico, outcome)`: find candidate trials.
 - `extract_effects(trial_id)`: return structured effect data with provenance.
