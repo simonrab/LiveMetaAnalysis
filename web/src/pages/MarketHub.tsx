@@ -80,7 +80,7 @@ export function MarketHub() {
   // Empty state: a centered hero, mirroring the New review page.
   if (empty) {
     return (
-      <div className="mx-auto flex min-h-[82vh] max-w-2xl flex-col items-center justify-center px-6 pb-16 text-center">
+      <div className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 py-10 text-center">
         <p className="text-label-caps uppercase text-ink-muted-light">Market intelligence</p>
         <h1 className="mt-3 font-sans text-display-lg text-ink-light">
           What do you want to know about the market?
