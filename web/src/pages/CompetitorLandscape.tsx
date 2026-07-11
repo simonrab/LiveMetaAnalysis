@@ -47,7 +47,7 @@ export function CompetitorLandscape() {
         <div>
           <h1 className="font-sans text-display-lg text-ink-light">Competitive Landscape</h1>
           <p className="mt-1 font-serif text-[16px] text-ink-muted-light">
-            Every asset by its stage of development, joined to the living pooled evidence for each.
+            Every asset by its stage of development.
           </p>
         </div>
       </div>
@@ -115,8 +115,7 @@ export function CompetitorLandscape() {
       <p className="mt-4 flex items-center gap-2 text-[12px] text-ink-muted-light">
         <Icon name="info" size={16} />
         Each drug's phase is read from ClinicalTrials.gov, and every stage links back to its source
-        trial. Cards linked to a saved meta-analysis also show its pooled result. Click a sponsor to
-        see that company's entire pipeline.
+        trial. Click a sponsor to see that company's entire pipeline.
       </p>
     </div>
   );
