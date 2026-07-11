@@ -98,8 +98,8 @@ export function AssetCompare() {
 
       <p className="mt-4 flex items-center gap-2 text-[12px] text-ink-muted-light">
         <Icon name="info" size={16} />
-        Operational facts only — stage, trial, enrollment, geography, and timing, read from
-        ClinicalTrials.gov. Pooled efficacy evidence lives in the meta-analysis review pages.
+        Operational facts only — trial counts (running, completed), the phase spread, FDA
+        approvals, geography, and timing. Pooled efficacy evidence lives in the review pages.
       </p>
     </div>
   );

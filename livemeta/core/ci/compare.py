@@ -38,10 +38,6 @@ def _today() -> str:
     return date.today().isoformat()
 
 
-def _phase_label(phase: Phase) -> str:
-    return phase.value.replace("_", " ").title()
-
-
 def assess_comparability(a: AssetEvidenceContext, b: AssetEvidenceContext) -> Comparability:
     """The gate. Two estimates are directly comparable only when they share an
     outcome measure, a population, AND a common comparator (an anchored indirect
@@ -77,18 +73,58 @@ def _primary_indication(dossier: AssetDossier, indication: str | None) -> str:
     return counts.most_common(1)[0][0] if counts else ""
 
 
-def _lead_phase(trials: Sequence[TrialDetail]) -> Phase:
-    return max((t.phase for t in trials), key=phase_rank, default=Phase.UNKNOWN)
+# CT.gov overallStatus values that mean the trial is still active.
+_RUNNING_STATUSES = {
+    "RECRUITING",
+    "ACTIVE_NOT_RECRUITING",
+    "ENROLLING_BY_INVITATION",
+    "NOT_YET_RECRUITING",
+}
+
+_PHASE_SHORT = {
+    Phase.PRECLINICAL: "Preclin",
+    Phase.PHASE_1: "Ph1",
+    Phase.PHASE_1_2: "Ph1/2",
+    Phase.PHASE_2: "Ph2",
+    Phase.PHASE_2_3: "Ph2/3",
+    Phase.PHASE_3: "Ph3",
+    Phase.PHASE_4: "Ph4",
+    Phase.FILED: "Filed",
+    Phase.APPROVED: "Approved",
+    Phase.WITHDRAWN: "Withdrawn",
+}
 
 
-def _pivotal(trials: Sequence[TrialDetail]) -> TrialDetail | None:
-    dated = list(trials)
-    return max(dated, key=lambda t: (t.enrollment or 0, t.nct_id)) if dated else None
+def _count_running(trials: Sequence[TrialDetail]) -> int:
+    return sum(1 for t in trials if (t.status or "").upper() in _RUNNING_STATUSES)
 
 
-def _max_enrollment(trials: Sequence[TrialDetail]) -> int | None:
-    vals = [t.enrollment for t in trials if t.enrollment]
-    return max(vals) if vals else None
+def _count_completed(trials: Sequence[TrialDetail]) -> int:
+    return sum(1 for t in trials if (t.status or "").upper() == "COMPLETED")
+
+
+def _phase_spread(trials: Sequence[TrialDetail]) -> str:
+    """A compact per-phase count, e.g. 'Ph2 5 · Ph3 8 · Ph4 12 · NA 40' — so the
+    real distribution shows, not a single (misleading) 'most advanced' phase.
+    Non-phased studies (observational, expanded access) fall under NA."""
+    counts = Counter(t.phase for t in trials)
+    known = sorted((p for p in counts if p != Phase.UNKNOWN), key=phase_rank)
+    parts = [f"{_PHASE_SHORT[p]} {counts[p]}" for p in known]
+    if counts.get(Phase.UNKNOWN):
+        parts.append(f"NA {counts[Phase.UNKNOWN]}")
+    return " · ".join(parts) or "—"
+
+
+def _approvals_cell(dossier: AssetDossier) -> str:
+    """FDA approval count plus brand names (from openFDA), or '—' when none."""
+    apps = dossier.approvals
+    if not apps:
+        return "—"
+    brands = sorted({b for a in apps for b in (a.brand_names or [])})
+    label = str(len(apps))
+    if brands:
+        label += " · " + ", ".join(brands[:3])
+    return label
 
 
 def _next_readout(trials: Sequence[TrialDetail], today: str) -> str | None:
@@ -100,15 +136,14 @@ def _next_readout(trials: Sequence[TrialDetail], today: str) -> str | None:
     return min(future) if future else None
 
 
-def _numeric_row(label: str, raw: list[int | None], render: Callable[[int], str]) -> ComparisonRow:
-    """A count row with a neutral 'more' marker on the leader (facts, not effect claims)."""
-    present = [v for v in raw if v]
-    top = max(present) if present else None
-    distinct = len(set(present)) > 1
+def _count_row(label: str, raw: list[int]) -> ComparisonRow:
+    """A count row with a neutral 'more' marker on the leader (a fact, not a verdict)."""
+    top = max(raw) if raw else 0
+    distinct = len(set(raw)) > 1
     return ComparisonRow(
         label=label,
-        values=[render(v) if v else "—" for v in raw],
-        more=[bool(distinct and v is not None and v == top) for v in raw],
+        values=[str(v) for v in raw],
+        more=[bool(distinct and v == top and v > 0) for v in raw],
     )
 
 
@@ -137,22 +172,18 @@ def compare_assets(
 
     inds = {a: _primary_indication(d, indication) for a, d in dossiers.items()}
 
-    # Operational rows — safe to compare.
+    # Operational rows — counts, phase spread, approvals, geography, timing.
     trials_by_asset = {a: d.trials for a, d in dossiers.items()}
     rows: list[ComparisonRow] = [
         ComparisonRow(label="Indication", values=[inds[a] or "—" for a in assets]),
+        _count_row("Trials", [len(trials_by_asset[a]) for a in assets]),
+        _count_row("Running", [_count_running(trials_by_asset[a]) for a in assets]),
+        _count_row("Completed", [_count_completed(trials_by_asset[a]) for a in assets]),
+        ComparisonRow(label="Phases", values=[_phase_spread(trials_by_asset[a]) for a in assets]),
         ComparisonRow(
-            label="Lead phase", values=[_phase_label(_lead_phase(trials_by_asset[a])) for a in assets]
+            label="FDA approvals", values=[_approvals_cell(dossiers[a]) for a in assets]
         ),
-        ComparisonRow(
-            label="Pivotal trial",
-            values=[(_pivotal(trials_by_asset[a]).title if _pivotal(trials_by_asset[a]) else "—")
-                    for a in assets],
-        ),
-        _numeric_row("Enrollment", [_max_enrollment(trials_by_asset[a]) for a in assets],
-                     lambda v: f"{v:,}"),
-        _numeric_row("Geography", [len(dossiers[a].countries) for a in assets],
-                     lambda v: f"{v} countries"),
+        _count_row("Countries", [len(dossiers[a].countries) for a in assets]),
         ComparisonRow(
             label="Next readout",
             values=[(_next_readout(trials_by_asset[a], today) or "—") for a in assets],

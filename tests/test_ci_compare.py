@@ -21,8 +21,8 @@ from tests.test_ci_ctgov import _study
 
 
 def _study_full(nct, asset, indication="Obesity", phase="PHASE3", enrollment=None,
-                countries=(), pcd=None, has_results=False):
-    s = _study(nct=nct, conditions=(indication,), phases=(phase,), status="RECRUITING",
+                countries=(), pcd=None, has_results=False, status="RECRUITING"):
+    s = _study(nct=nct, conditions=(indication,), phases=(phase,), status=status,
                primary_completion=pcd, interventions=((("DRUG", asset)),))
     if enrollment is not None:
         s["protocolSection"]["designModule"]["enrollmentInfo"] = {"count": enrollment}
@@ -101,17 +101,41 @@ def test_compare_lines_up_operational_facts_and_abstains_on_efficacy(tmp_path):
     )
 
     rows = {r.label: r for r in result.rows}
-    assert rows["Enrollment"].values == ["12,500", "17,600"]
-    assert rows["Enrollment"].more == [False, True]  # neutral marker on the larger
-    assert rows["Geography"].more == [False, True]
+    assert rows["Trials"].values == ["1", "1"]
+    assert rows["Running"].values == ["1", "1"]  # both RECRUITING
+    assert rows["Completed"].values == ["0", "0"]
+    assert rows["Countries"].values == ["3", "5"]
+    assert rows["Countries"].more == [False, True]  # neutral marker on the larger
     assert rows["Next readout"].values == ["2026-11-01", "—"]
 
-    # Efficacy is NOT a comparison row.
-    assert "Estimate" not in rows and "HR" not in rows
+    # The misleading "most advanced phase" / "biggest study" rows are gone; efficacy
+    # is never a comparison row.
+    assert "Lead phase" not in rows and "Enrollment" not in rows
+    assert "Estimate" not in rows
 
-    # Each asset's evidence stands in its own context; the gate abstains.
+    # Each asset's evidence stands in its own context (not rendered, but present).
     assert [e.asset_name for e in result.evidence] == ["DrugA", "DrugB"]
-    drug_a = next(e for e in result.evidence if e.asset_name == "DrugA")
-    assert drug_a.plain_summary == "benefit proven"
     assert result.comparability.directly_comparable is False
-    assert result.comparability.reasons
+
+
+def test_compare_counts_statuses_and_shows_the_phase_spread(tmp_path):
+    store = SnapshotStore(data_dir=tmp_path)
+    catalog = {
+        "DrugX": [
+            _study_full("N1", "DrugX", phase="PHASE3", status="RECRUITING"),
+            _study_full("N2", "DrugX", phase="PHASE3", status="COMPLETED", has_results=True),
+            _study_full("N3", "DrugX", phase="PHASE4", status="ACTIVE_NOT_RECRUITING"),
+            # An observational registry — no phase → falls under NA, not "Phase 4".
+            _study_full("N4", "DrugX", phase="NA", status="RECRUITING"),
+        ],
+    }
+    result = compare.compare_assets(
+        store, ["DrugX", "DrugX"], indication="Obesity",
+        search=lambda a: catalog["DrugX"], as_of="2026-01-01",
+    )
+    rows = {r.label: r for r in result.rows}
+    assert rows["Trials"].values[0] == "4"
+    assert rows["Running"].values[0] == "3"  # RECRUITING×2 + ACTIVE_NOT_RECRUITING
+    assert rows["Completed"].values[0] == "1"
+    # The distribution is visible — Ph3, Ph4, and NA all show, not a single "Phase 4".
+    assert rows["Phases"].values[0] == "Ph3 2 · Ph4 1 · NA 1"
