@@ -89,8 +89,7 @@ export function MarketHub() {
         <div className="mt-8 w-full">
           {promptBox(4)}
           <p className="mt-3 text-[12px] text-ink-muted-light">
-            Competitive pipeline intelligence over live ClinicalTrials.gov — a research tool,
-            not medical advice.
+            Market intelligence over live ClinicalTrials.gov — a research tool, not medical advice.
           </p>
         </div>
 
