@@ -96,6 +96,18 @@ def test_asset_timeline_endpoint(client):
     assert events and all(e["asset_name"] == "Semaglutide" for e in events)
 
 
+def test_asset_timeline_seeds_when_store_is_cold(client):
+    # Hitting the timeline first — before any /api/landscape call — still returns
+    # events, because the endpoint seeds the condition itself. Guards against the
+    # blank drill-in when a replica's store partition was cold or mid-reseed.
+    r = client.get(
+        "/api/landscape/asset/Semaglutide", params={"condition": "Type 2 Diabetes"}
+    )
+    assert r.status_code == 200
+    events = r.json()
+    assert events and all(e["asset_name"] == "Semaglutide" for e in events)
+
+
 def test_asset_timeline_handles_slash_in_name(tmp_path):
     # Combination therapies carry a slash in the asset name (e.g. Contrave =
     # Naltrexone/Bupropion). The drill-in link URL-encodes it to %2F, which

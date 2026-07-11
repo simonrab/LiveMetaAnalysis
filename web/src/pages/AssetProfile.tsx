@@ -25,11 +25,18 @@ export function AssetProfile() {
   const condition = params.get("condition") ?? "";
   const [events, setEvents] = useState<DevelopmentEvent[] | null>(null);
   const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Reset on navigation so the loading state shows instead of a blank body or
+    // the previous asset's events while the next fetch is in flight.
+    setLoading(true);
+    setError(false);
+    setEvents(null);
     getAssetTimeline(condition, name)
       .then((e) => setEvents([...e].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))))
-      .catch(() => setError(true));
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
   }, [condition, name]);
 
   const sponsor = events?.find((e) => e.sponsor)?.sponsor;
@@ -59,12 +66,18 @@ export function AssetProfile() {
         .
       </p>
 
-      {error && (
+      {loading && (
+        <p className="mt-6 font-mono text-[13px] text-ink-muted-light">Loading timeline…</p>
+      )}
+
+      {error && !loading && (
         <p className="mt-6 font-mono text-[13px] text-risk-high">Could not load the timeline.</p>
       )}
 
-      {events && events.length === 0 && (
-        <p className="mt-6 text-[14px] text-ink-muted-light">No dated events for this asset.</p>
+      {!loading && !error && events && events.length === 0 && (
+        <p className="mt-6 text-[14px] text-ink-muted-light">
+          No dated development events recorded for this asset in {condition || "this condition"}.
+        </p>
       )}
 
       {events && events.length > 0 && (

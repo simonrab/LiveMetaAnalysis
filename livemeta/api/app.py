@@ -445,13 +445,22 @@ def get_landscape(
 
 @app.get("/api/landscape/asset/{name:path}", response_model=list[DevelopmentEvent])
 def get_asset_timeline(
-    name: str, condition: str, store: SnapshotStore = Depends(get_store)
+    name: str,
+    condition: str,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_search),
 ) -> list[DevelopmentEvent]:
     """One asset's dated development history for the drill-in view.
+
+    Seeds the condition's landscape first (idempotent — a no-op once cached) so
+    the timeline is never empty just because this replica's store partition was
+    cold or mid-reseed; the board and the MCP `track_asset` tool seed the same
+    way. Only pulls from CT.gov when nothing is stored yet.
 
     `{name:path}` so combination therapies whose name carries a slash (e.g.
     Naltrexone/Bupropion), URL-encoded to %2F and decoded back to a real slash,
     still resolve here instead of falling through to the SPA fallback."""
+    ci_service.get_landscape(store, condition, search_pipeline=search)
     return ci_service.asset_timeline(store, condition, name)
 
 
