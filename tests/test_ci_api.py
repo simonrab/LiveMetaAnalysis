@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from livemeta.api.app import (
     app,
+    get_ci_asset_search,
     get_ci_company_search,
     get_ci_search,
     get_openfda,
@@ -106,6 +107,70 @@ def test_asset_timeline_seeds_when_store_is_cold(client):
     assert r.status_code == 200
     events = r.json()
     assert events and all(e["asset_name"] == "Semaglutide" for e in events)
+
+
+# --- market-intelligence endpoints ------------------------------------------
+
+
+def test_changes_endpoint_surfaces_moves_since_a_date(client):
+    r = client.get(
+        "/api/landscape/changes",
+        params={"condition": "Type 2 Diabetes", "since": "2000-01-01"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["condition"] == "Type 2 Diabetes"
+    # Both assets entered after 2000, so the feed is non-empty.
+    assert len(body["changes"]) >= 1
+
+
+def test_radar_endpoint_returns_bucketed_milestones(client):
+    r = client.get(
+        "/api/landscape/radar",
+        params={"condition": "Type 2 Diabetes", "as_of": "2010-01-01", "horizon_months": 240},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    # Semaglutide's 2018 completion is a future readout relative to 2010.
+    assert any(m["asset_name"] == "Semaglutide" for m in body["milestones"])
+
+
+def test_moa_endpoint_clusters_by_mechanism(client):
+    r = client.get("/api/landscape/moa", params={"condition": "Type 2 Diabetes"})
+    assert r.status_code == 200
+    classes = {c["drug_class"] for c in r.json()["clusters"]}
+    assert "GLP-1 receptor agonists" in classes  # Semaglutide, via INN stem
+
+
+def test_compare_endpoint_abstains_on_efficacy(tmp_path):
+    store = SnapshotStore(data_dir=tmp_path)
+    catalog = {
+        "Semaglutide": [_study(nct="NCT1", conditions=("Obesity",),
+                               interventions=(("DRUG", "Semaglutide"),))],
+        "Tirzepatide": [_study(nct="NCT2", conditions=("Obesity",),
+                               interventions=(("DRUG", "Tirzepatide"),))],
+    }
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_ci_asset_search] = lambda: (lambda a: catalog.get(a, []))
+    try:
+        c = TestClient(app)
+        r = c.get("/api/compare", params={"assets": "Semaglutide,Tirzepatide", "indication": "Obesity"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["assets"] == ["Semaglutide", "Tirzepatide"]
+        assert body["comparability"]["directly_comparable"] is False
+    finally:
+        app.dependency_overrides.pop(get_store, None)
+        app.dependency_overrides.pop(get_ci_asset_search, None)
+
+
+def test_market_ask_routes_and_grounds(client):
+    r = client.post("/api/market/ask", json={"text": "map the type 2 diabetes landscape"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["tool"] == "landscape"
+    assert "Semaglutide" in body["result"]["assets"]
+    assert body["narrative"] and body["suggestions"]
 
 
 def test_asset_timeline_handles_slash_in_name(tmp_path):

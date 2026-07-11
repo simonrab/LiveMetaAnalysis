@@ -128,6 +128,11 @@ class SnapshotStore:
                     approval_json TEXT NOT NULL,
                     updated_at    TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS moa_cache (
+                    asset_name TEXT PRIMARY KEY,
+                    drug_class TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
             conn.commit()
@@ -438,3 +443,33 @@ class SnapshotStore:
                 (drug,),
             ).fetchall()
         return [RegulatoryApproval.model_validate_json(r["approval_json"]) for r in rows]
+
+    # --- v3: mechanism-of-action cache (LLM-inferred drug class) --------------
+
+    def save_moa(self, asset_name: str, drug_class: str) -> None:
+        self.save_moa_many({asset_name: drug_class})
+
+    def save_moa_many(self, classes: dict[str, str]) -> None:
+        """Batch-write inferred classes in one transaction (a cold MoA landscape
+        can have ~1k assets — a connection per asset makes the first call crawl)."""
+        if not classes:
+            return
+        now = _now()
+        with closing(self._connect()) as conn, conn:
+            conn.executemany(
+                "INSERT INTO moa_cache (asset_name, drug_class, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(asset_name) DO UPDATE SET drug_class = excluded.drug_class, "
+                "updated_at = excluded.updated_at",
+                [(a, c, now) for a, c in classes.items()],
+            )
+
+    def load_moa(self, asset_names: list[str]) -> dict[str, str]:
+        if not asset_names:
+            return {}
+        placeholders = ",".join("?" for _ in asset_names)
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                f"SELECT asset_name, drug_class FROM moa_cache WHERE asset_name IN ({placeholders})",
+                tuple(asset_names),
+            ).fetchall()
+        return {r["asset_name"]: r["drug_class"] for r in rows}

@@ -387,3 +387,181 @@ class CompanyPipeline(BaseModel):
     cells: list[LandscapeCell] = Field(default_factory=list)
     approvals: list[RegulatoryApproval] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# v3 — CI as intelligence: change-feed, radar, side-by-side, MoA, NL front door
+# ---------------------------------------------------------------------------
+
+
+class ChangeType(str, Enum):
+    """The kinds of competitive move the change-feed surfaces."""
+
+    NEW_PROGRAM = "new_program"
+    ADVANCED = "advanced"
+    READOUT = "readout"
+    EVIDENCE_MOVED = "evidence_moved"
+    CONFLICT_OPENED = "conflict_opened"
+
+
+class LandscapeChange(BaseModel):
+    """One dated, sourced competitive move between two as-of snapshots.
+
+    The CI analogue of `ReviewDiff`: what changed and — for evidence moves —
+    whether the *conclusion* changed, never a fabricated number. Every change
+    carries the provenance of the events that produced it.
+    """
+
+    asset_name: str
+    indication: str
+    change_type: ChangeType
+    date: str | None = None  # when the move happened, within the window
+    from_phase: Phase | None = None
+    to_phase: Phase | None = None
+    # Evidence moves only — plain-language headline plus the drill-in numbers.
+    summary: str = ""  # plain language, e.g. "Advanced to Phase 3"
+    estimate_prev: float | None = None
+    estimate_curr: float | None = None
+    provenance: list[Provenance] = Field(default_factory=list)
+
+
+class LandscapeDiff(BaseModel):
+    """"What moved" in a condition's landscape between two dates."""
+
+    condition: str
+    since: str | None = None
+    until: str | None = None
+    changes: list[LandscapeChange] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class MilestoneKind(str, Enum):
+    EXPECTED_READOUT = "expected_readout"  # primary completion in the future
+    PDUFA = "pdufa"  # regulatory decision expected
+
+
+class Milestone(BaseModel):
+    """A forward-looking, dated event — a readout or decision yet to land."""
+
+    asset_name: str
+    indication: str
+    nct_id: str = ""
+    title: str = ""
+    phase: Phase = Phase.UNKNOWN
+    kind: MilestoneKind = MilestoneKind.EXPECTED_READOUT
+    expected_date: str  # ISO date, in the future relative to as_of
+    quarter: str = ""  # e.g. "2026-Q4", derived for bucketing
+    sponsor: str | None = None
+    provenance: list[Provenance] = Field(default_factory=list)
+
+
+class MilestoneRadar(BaseModel):
+    """Upcoming readouts/decisions for a condition, bucketed by quarter."""
+
+    scope: str  # the condition (or sponsor) searched
+    as_of: str | None = None
+    horizon_months: int = 18
+    milestones: list[Milestone] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ComparisonRow(BaseModel):
+    """One operational attribute lined up across the compared assets.
+
+    Operational only — phase, enrollment, geography, timing. Effect estimates are
+    NOT comparison rows; they live in `AssetEvidenceContext`, each in its own
+    context, because a cross-trial efficacy comparison is a naive indirect
+    comparison the method forbids.
+    """
+
+    label: str
+    values: list[str] = Field(default_factory=list)  # one per asset, "—" when absent
+    # Neutral "this column has more" marker per asset — for counts (enrollment,
+    # geography), never for effect estimates. All-false when not applicable.
+    more: list[bool] = Field(default_factory=list)
+
+
+class AssetEvidenceContext(BaseModel):
+    """One asset's pooled evidence, presented in its own context — never ranked."""
+
+    asset_name: str
+    indication: str = ""
+    population: str = ""  # sub-population display, so the reader sees who it's in
+    comparator: str | None = None  # labeled so two badges aren't read as one axis
+    plain_summary: str = ""  # "benefit proven" / "evidence pending" / "not enough data"
+    badge: EvidenceBadge | None = None
+
+
+class Comparability(BaseModel):
+    """The deterministic gate: are two assets' estimates directly comparable?
+
+    Almost always false across separate meta-analyses. When false, the UI shows an
+    "Indirect — not directly comparable" banner listing `reasons`, and never a
+    shared axis or a winner.
+    """
+
+    directly_comparable: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
+class AssetComparison(BaseModel):
+    """A side-by-side profile: operational facts compared, efficacy abstained."""
+
+    assets: list[str] = Field(default_factory=list)
+    indication: str | None = None
+    rows: list[ComparisonRow] = Field(default_factory=list)
+    evidence: list[AssetEvidenceContext] = Field(default_factory=list)
+    comparability: Comparability = Field(default_factory=Comparability)
+    notes: list[str] = Field(default_factory=list)
+
+
+class MoaCluster(BaseModel):
+    """The competitive field for one mechanism, with class-level evidence."""
+
+    drug_class: str
+    label: str = ""
+    assets: list[str] = Field(default_factory=list)
+    program_count: int = 0
+    stage_distribution: dict[str, int] = Field(default_factory=dict)
+    plain_summary: str = ""  # plain-language class evidence line
+    evidence: EvidenceBadge | None = None
+
+
+class MoaLandscape(BaseModel):
+    """A condition's assets grouped by mechanism of action."""
+
+    condition: str
+    clusters: list[MoaCluster] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class MarketQuery(BaseModel):
+    """Claude's structured read of a free-text market-intelligence question.
+
+    The chat's brain: map plain language to one deterministic tool plus its
+    params. Code then executes the tool; Claude never computes the figures.
+    """
+
+    tool: str = "landscape"  # landscape|changes|compare|radar|moa|dossier|company|indication
+    condition: str | None = None
+    assets: list[str] = Field(default_factory=list)
+    indication: str | None = None
+    sponsor: str | None = None
+    since: str | None = None
+    until: str | None = None
+    as_of: str | None = None
+    horizon_months: int | None = None
+    confidence: str = "low"  # high | moderate | low
+    reason: str = ""  # why this route was chosen
+
+
+class MarketAnswer(BaseModel):
+    """The chat's response: the routed tool's typed payload + a grounded narrative."""
+
+    text: str  # the original question
+    intent: MarketQuery
+    tool: str = "landscape"
+    result: dict = Field(default_factory=dict)  # serialized view model for the front door
+    narrative: str = ""  # plain-language, numbers quoted from `result`
+    suggestions: list[str] = Field(default_factory=list)  # follow-up chips
+    notes: list[str] = Field(default_factory=list)

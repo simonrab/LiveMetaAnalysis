@@ -21,13 +21,24 @@ from mcp.server.fastmcp import FastMCP
 
 from ..core import demo
 from ..core import extract as extract_mod
+from ..core.ci import ask as ci_ask
+from ..core.ci import changefeed as ci_changefeed
+from ..core.ci import compare as ci_compare
+from ..core.ci import moa as ci_moa
+from ..core.ci import radar as ci_radar
 from ..core.ci import service as ci_service
+from ..core.ci.ask import MarketDeps
 from ..core.ci.schema import (
+    AssetComparison,
     AssetDossier,
     CompanyPipeline,
     DevelopmentEvent,
     IndicationMap,
     Landscape,
+    LandscapeDiff,
+    MarketAnswer,
+    MilestoneRadar,
+    MoaLandscape,
     SourceSelection,
 )
 from ..core.sources.openfda import OpenFdaClient
@@ -427,6 +438,85 @@ def indication_map(name: str, sources: str | None = None) -> IndicationMap:
         search=get_client().search_by_condition,
         selection=SourceSelection.from_param(sources),
     )
+
+
+@mcp.tool()
+def landscape_changes(
+    condition: str, since: str | None = None, until: str | None = None
+) -> LandscapeDiff:
+    """What moved in a condition's competitive landscape between two dates.
+
+    The market-intelligence analogue of `update`: reconstructs the landscape at
+    `since` and `until` (a pure filter over the same dated events) and reports the
+    deltas — stage advances, new programs, trial readouts, living-evidence moves
+    (conclusion changes, not bare numbers), and newly-opened source conflicts —
+    newest first, each traced to the events or review versions that produced it.
+    """
+    return ci_changefeed.landscape_changes(
+        get_store(), condition, since=since, until=until,
+        search_pipeline=get_client().search_pipeline,
+    )
+
+
+@mcp.tool()
+def milestone_radar(
+    condition: str, horizon_months: int = 18, as_of: str | None = None
+) -> MilestoneRadar:
+    """Upcoming trial readouts for a condition, bucketed by quarter — the one
+    forward-looking lens. Surfaces trials whose primary completion is in the future
+    (relative to `as_of`/today), within the horizon, and not yet reported."""
+    return ci_radar.milestone_radar(
+        get_store(), condition, search=get_client().search_pipeline,
+        horizon_months=horizon_months, as_of=as_of,
+    )
+
+
+@mcp.tool()
+def moa_landscape(condition: str) -> MoaLandscape:
+    """Group a condition's assets by mechanism of action, with class-level evidence.
+
+    Mechanism is inferred (Claude when a key is set, else the WHO INN-stem
+    convention) and cached per asset; assets that can't be classed confidently
+    group under 'unclassified' — never a fabricated class."""
+    return ci_moa.moa_landscape(
+        get_store(), condition, search=get_client().search_pipeline
+    )
+
+
+@mcp.tool()
+def compare_assets(assets: str, indication: str | None = None) -> AssetComparison:
+    """Side-by-side profile of two or more assets (comma-separated names).
+
+    Compares OPERATIONAL facts (phase, pivotal trial, enrollment, geography, next
+    readout). It deliberately does NOT rank the pooled efficacy: two estimates from
+    separate meta-analyses are an unanchored indirect comparison, so each asset's
+    evidence is shown in its own context and a comparability check flags them as
+    not directly comparable. Abstaining from the verdict is the trust story."""
+    names = [a.strip() for a in assets.split(",") if a.strip()]
+    return ci_compare.compare_assets(
+        get_store(), names, indication,
+        search=get_client().search_by_intervention, openfda=get_openfda(),
+    )
+
+
+@mcp.tool()
+def market_ask(text: str) -> MarketAnswer:
+    """Answer a plain-language market-intelligence question by routing it to the
+    right tool and returning that tool's typed payload plus a grounded narrative.
+
+    Claude picks the tool (landscape, changes, compare, radar, moa, dossier,
+    company, indication) and extracts params; deterministic code produces every
+    figure. The unifying front door over the whole market-intelligence surface."""
+    client = get_client()
+    deps = MarketDeps(
+        search_condition=client.search_pipeline,
+        search_asset=client.search_by_intervention,
+        search_sponsor=client.search_by_sponsor,
+        search_indication=client.search_by_condition,
+        openfda=get_openfda(),
+        llm_client=None,  # ask/moa resolve the LLM from ANTHROPIC_API_KEY, else deterministic
+    )
+    return ci_ask.answer(get_store(), text, deps=deps)
 
 
 def main() -> None:

@@ -76,6 +76,25 @@ def badge_from_result(
     )
 
 
+def plain_evidence(badge: EvidenceBadge | None) -> str:
+    """A jargon-free one-liner for the evidence state (recent copy direction).
+
+    The HR/CI/GRADE detail stays on the badge for hover/drill-in; this is the
+    headline the dense CI grids lead with.
+    """
+    if badge is None:
+        return "no linked evidence"
+    if badge.state == "gate_open":
+        return "evidence pending review"
+    if badge.state == "abstained":
+        return "not enough data yet"
+    # pooled — the conclusion string already reads "significant reduction" etc.
+    conclusion = (badge.conclusion or "").lower()
+    if "significant" in conclusion and "no significant" not in conclusion:
+        return "benefit proven"
+    return "no significant benefit"
+
+
 def make_evidence_resolver(store) -> Callable[[str], EvidenceBadge | None]:
     """A resolver `question_id -> EvidenceBadge` backed by the snapshot store.
 

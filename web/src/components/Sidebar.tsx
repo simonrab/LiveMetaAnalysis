@@ -14,7 +14,18 @@ function item(active: boolean): string {
 const primary = [
   { to: "/ask", label: "New review", end: false, icon: "edit_note" },
   { to: "/", label: "Reviews", end: true, icon: "space_dashboard" },
-  { to: "/landscape", label: "Landscape", end: false, icon: "hub" },
+  { to: "/market", label: "Market Intelligence", end: true, icon: "insights" },
+];
+
+// The market-intelligence lenses — shown when in that area. The hub (Ask) is the
+// front door; the rest are alternate projections of the same landscape.
+const market = [
+  { to: "/market", label: "Ask", icon: "chat", end: true },
+  { to: "/landscape", label: "Landscape", icon: "hub", end: false },
+  { to: "/market/changes", label: "What changed", icon: "history", end: false },
+  { to: "/market/radar", label: "Readout radar", icon: "event_upcoming", end: false },
+  { to: "/market/compare", label: "Compare", icon: "compare_arrows", end: false },
+  { to: "/market/moa", label: "By mechanism", icon: "science", end: false },
 ];
 
 // The current review id, if we're inside a /reviews/:id/... route — so the
@@ -45,8 +56,14 @@ function useTheme(): [Theme, () => void] {
   return [theme, () => setTheme((t) => (t === "dark" ? "light" : "dark"))];
 }
 
+function useInMarket(): boolean {
+  const { pathname } = useLocation();
+  return pathname.startsWith("/market") || pathname.startsWith("/landscape");
+}
+
 export function Sidebar() {
   const reviewId = useCurrentReviewId();
+  const inMarket = useInMarket();
   const [theme, toggleTheme] = useTheme();
   const analysis = reviewId
     ? [
@@ -90,6 +107,24 @@ export function Sidebar() {
             )}
           </NavLink>
         ))}
+
+        {inMarket && (
+          <div className="pt-5">
+            <div className="mb-1 px-3 pb-1 text-label-caps uppercase text-outline">
+              Market intelligence
+            </div>
+            {market.map((l) => (
+              <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => item(isActive)}>
+                {({ isActive }) => (
+                  <>
+                    <Icon name={l.icon} size={20} fill={isActive} />
+                    <span>{l.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+        )}
 
         {analysis.length > 0 && (
           <div className="pt-5">

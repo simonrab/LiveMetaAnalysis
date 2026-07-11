@@ -27,13 +27,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ..core import demo, living, llm, pipeline, rob as rob_mod
+from ..core.ci import ask as ci_ask
+from ..core.ci import changefeed as ci_changefeed
+from ..core.ci import compare as ci_compare
+from ..core.ci import moa as ci_moa
+from ..core.ci import radar as ci_radar
 from ..core.ci import service as ci_service
+from ..core.ci.ask import MarketDeps
 from ..core.ci.schema import (
+    AssetComparison,
     AssetDossier,
     CompanyPipeline,
     DevelopmentEvent,
     IndicationMap,
     Landscape,
+    LandscapeDiff,
+    MarketAnswer,
+    MilestoneRadar,
+    MoaLandscape,
     SourceSelection,
 )
 from ..core.sources.openfda import OpenFdaClient
@@ -165,6 +176,10 @@ class IngestRequest(BaseModel):
     condition: str
     text: str
     source_label: str
+
+
+class MarketAskRequest(BaseModel):
+    text: str
 
 
 class LinkRequest(BaseModel):
@@ -537,6 +552,93 @@ def indication_map(
     stage distribution, geography, and evidence."""
     selection = SourceSelection.from_param(sources)
     return ci_service.indication_map(store, name, search=search, selection=selection)
+
+
+# --- market intelligence: change-feed, radar, compare, MoA, chat -------------
+
+
+@app.get("/api/landscape/changes", response_model=LandscapeDiff)
+def landscape_changes(
+    condition: str,
+    since: str | None = None,
+    until: str | None = None,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_search),
+) -> LandscapeDiff:
+    """"What moved" in a condition's landscape between two dates — the CI analogue
+    of the meta-analysis living layer. Advances, new programs, readouts, evidence
+    moves, and newly-opened source conflicts, newest first, each traced to source."""
+    return ci_changefeed.landscape_changes(
+        store, condition, since=since, until=until, search_pipeline=search
+    )
+
+
+@app.get("/api/landscape/radar", response_model=MilestoneRadar)
+def milestone_radar(
+    condition: str,
+    horizon_months: int = 18,
+    as_of: str | None = None,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_search),
+) -> MilestoneRadar:
+    """Upcoming expected readouts for a condition, bucketed by quarter — the one
+    forward-looking lens (future primary-completion dates not yet reported)."""
+    return ci_radar.milestone_radar(
+        store, condition, search=search, horizon_months=horizon_months, as_of=as_of
+    )
+
+
+@app.get("/api/landscape/moa", response_model=MoaLandscape)
+def moa_landscape(
+    condition: str,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_search),
+) -> MoaLandscape:
+    """A condition's assets grouped by mechanism of action, with class-level
+    evidence. Mechanism is inferred (Claude, else INN-stem heuristic) and cached;
+    unclassified assets group last — never a fabricated class."""
+    return ci_moa.moa_landscape(store, condition, search=search)
+
+
+@app.get("/api/compare", response_model=AssetComparison)
+def compare_assets(
+    assets: str,  # comma-separated
+    indication: str | None = None,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_asset_search),
+    openfda=Depends(get_openfda),
+) -> AssetComparison:
+    """Side-by-side profile of two or more assets. Operational facts (phase,
+    enrollment, geography, timing) compare; pooled evidence is shown per asset in
+    its own context and gated by a comparability check — never ranked, no shared
+    axis. Abstaining from the efficacy verdict is deliberate (indirect comparison)."""
+    names = [a.strip() for a in assets.split(",") if a.strip()]
+    return ci_compare.compare_assets(
+        store, names, indication, search=search, openfda=openfda
+    )
+
+
+@app.post("/api/market/ask", response_model=MarketAnswer)
+def market_ask(
+    req: MarketAskRequest,
+    store: SnapshotStore = Depends(get_store),
+    search=Depends(get_ci_search),
+    asset_search=Depends(get_ci_asset_search),
+    company_search=Depends(get_ci_company_search),
+    indication_search=Depends(get_ci_indication_search),
+    openfda=Depends(get_openfda),
+) -> MarketAnswer:
+    """The market-intelligence front door: route a plain-language question to the
+    right tool and return its typed payload plus a grounded narrative. Claude picks
+    the tool; deterministic code produces every figure."""
+    deps = MarketDeps(
+        search_condition=search,
+        search_asset=asset_search,
+        search_sponsor=company_search,
+        search_indication=indication_search,
+        openfda=openfda,
+    )
+    return ci_ask.answer(store, req.text, deps=deps)
 
 
 @app.websocket("/ws/review")

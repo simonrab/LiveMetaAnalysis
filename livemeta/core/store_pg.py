@@ -130,6 +130,15 @@ class PostgresSnapshotStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS moa_cache (
+                    asset_name TEXT PRIMARY KEY,
+                    drug_class TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
 
     def drop_schema(self) -> None:
         """Tear down an isolated test schema; a no-op safety guard on `public`."""
@@ -399,3 +408,31 @@ class PostgresSnapshotStore:
                 (drug,),
             ).fetchall()
         return [RegulatoryApproval.model_validate_json(r["approval_json"]) for r in rows]
+
+    # --- v3: mechanism-of-action cache (LLM-inferred drug class) --------------
+
+    def save_moa(self, asset_name: str, drug_class: str) -> None:
+        self.save_moa_many({asset_name: drug_class})
+
+    def save_moa_many(self, classes: dict[str, str]) -> None:
+        """Batch-write inferred classes in one transaction (see SnapshotStore)."""
+        if not classes:
+            return
+        now = _now()
+        with self._connect() as conn:
+            conn.executemany(
+                "INSERT INTO moa_cache (asset_name, drug_class, updated_at) VALUES (%s, %s, %s) "
+                "ON CONFLICT(asset_name) DO UPDATE SET drug_class = excluded.drug_class, "
+                "updated_at = excluded.updated_at",
+                [(a, c, now) for a, c in classes.items()],
+            )
+
+    def load_moa(self, asset_names: list[str]) -> dict[str, str]:
+        if not asset_names:
+            return {}
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT asset_name, drug_class FROM moa_cache WHERE asset_name = ANY(%s)",
+                (list(asset_names),),
+            ).fetchall()
+        return {r["asset_name"]: r["drug_class"] for r in rows}

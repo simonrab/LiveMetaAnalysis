@@ -2,11 +2,16 @@
 // review.tsx; everything request/response goes through here.
 
 import type {
+  AssetComparison,
   AssetDossier,
   CompanyPipeline,
   DevelopmentEvent,
   IndicationMap,
   Landscape,
+  LandscapeDiff,
+  MarketAnswer,
+  MilestoneRadar,
+  MoaLandscape,
   Question,
   ReviewDecision,
   ReviewDiff,
@@ -227,5 +232,52 @@ export async function getIndicationMap(
 ): Promise<IndicationMap> {
   return json<IndicationMap>(
     await fetch(apiUrl(`/api/indication/${encodeURIComponent(name)}${sourcesParam(sources)}`))
+  );
+}
+
+// --- v3: market intelligence -------------------------------------------------
+
+export async function getLandscapeChanges(
+  condition: string,
+  since?: string | null,
+  until?: string | null
+): Promise<LandscapeDiff> {
+  const params = new URLSearchParams({ condition });
+  if (since) params.set("since", since);
+  if (until) params.set("until", until);
+  return json<LandscapeDiff>(await fetch(apiUrl(`/api/landscape/changes?${params.toString()}`)));
+}
+
+export async function getMilestoneRadar(
+  condition: string,
+  horizonMonths = 18,
+  asOf?: string | null
+): Promise<MilestoneRadar> {
+  const params = new URLSearchParams({ condition, horizon_months: String(horizonMonths) });
+  if (asOf) params.set("as_of", asOf);
+  return json<MilestoneRadar>(await fetch(apiUrl(`/api/landscape/radar?${params.toString()}`)));
+}
+
+export async function getMoaLandscape(condition: string): Promise<MoaLandscape> {
+  const params = new URLSearchParams({ condition });
+  return json<MoaLandscape>(await fetch(apiUrl(`/api/landscape/moa?${params.toString()}`)));
+}
+
+export async function compareAssets(
+  assets: string[],
+  indication?: string | null
+): Promise<AssetComparison> {
+  const params = new URLSearchParams({ assets: assets.join(",") });
+  if (indication) params.set("indication", indication);
+  return json<AssetComparison>(await fetch(apiUrl(`/api/compare?${params.toString()}`)));
+}
+
+export async function marketAsk(text: string): Promise<MarketAnswer> {
+  return json<MarketAnswer>(
+    await fetch(apiUrl("/api/market/ask"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    })
   );
 }

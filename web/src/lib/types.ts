@@ -550,3 +550,127 @@ export interface IndicationMap {
   nodes: IndicationNode[];
   notes: string[];
 }
+
+// --- v3: market intelligence — change-feed, radar, compare, MoA, chat --------
+
+export type ChangeType =
+  | "new_program"
+  | "advanced"
+  | "readout"
+  | "evidence_moved"
+  | "conflict_opened";
+
+export interface LandscapeChange {
+  asset_name: string;
+  indication: string;
+  change_type: ChangeType;
+  date?: string | null;
+  from_phase?: Phase | null;
+  to_phase?: Phase | null;
+  summary: string;
+  estimate_prev?: number | null;
+  estimate_curr?: number | null;
+  provenance: Provenance[];
+}
+
+export interface LandscapeDiff {
+  condition: string;
+  since?: string | null;
+  until?: string | null;
+  changes: LandscapeChange[];
+  notes: string[];
+}
+
+export type MilestoneKind = "expected_readout" | "pdufa";
+
+export interface Milestone {
+  asset_name: string;
+  indication: string;
+  nct_id: string;
+  title: string;
+  phase: Phase;
+  kind: MilestoneKind;
+  expected_date: string;
+  quarter: string;
+  sponsor?: string | null;
+  provenance: Provenance[];
+}
+
+export interface MilestoneRadar {
+  scope: string;
+  as_of?: string | null;
+  horizon_months: number;
+  milestones: Milestone[];
+  notes: string[];
+}
+
+export interface ComparisonRow {
+  label: string;
+  values: string[];
+  more: boolean[];
+}
+
+export interface AssetEvidenceContext {
+  asset_name: string;
+  indication: string;
+  population: string;
+  comparator?: string | null;
+  plain_summary: string;
+  badge?: EvidenceBadge | null;
+}
+
+export interface Comparability {
+  directly_comparable: boolean;
+  reasons: string[];
+}
+
+export interface AssetComparison {
+  assets: string[];
+  indication?: string | null;
+  rows: ComparisonRow[];
+  evidence: AssetEvidenceContext[];
+  comparability: Comparability;
+  notes: string[];
+}
+
+export interface MoaCluster {
+  drug_class: string;
+  label: string;
+  assets: string[];
+  program_count: number;
+  stage_distribution: Record<string, number>;
+  plain_summary: string;
+  evidence?: EvidenceBadge | null;
+}
+
+export interface MoaLandscape {
+  condition: string;
+  clusters: MoaCluster[];
+  notes: string[];
+}
+
+export interface MarketQuery {
+  tool: string;
+  condition?: string | null;
+  assets: string[];
+  indication?: string | null;
+  sponsor?: string | null;
+  since?: string | null;
+  until?: string | null;
+  as_of?: string | null;
+  horizon_months?: number | null;
+  confidence: string;
+  reason: string;
+}
+
+// The routed payload is one of the view models above, keyed by `tool`.
+export interface MarketAnswer {
+  text: string;
+  intent: MarketQuery;
+  tool: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  result: any;
+  narrative: string;
+  suggestions: string[];
+  notes: string[];
+}
