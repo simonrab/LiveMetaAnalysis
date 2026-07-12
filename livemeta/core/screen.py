@@ -28,12 +28,20 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pydantic import BaseModel
 
 from .schema import EligibilityDecision, Provenance, Question
 
 _DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+
+# The live clinical read runs one Claude call per candidate; a systematic search
+# can return dozens, so screen them over a bounded thread pool instead of serially
+# (mirrors the risk-of-bias concurrency in the pipeline). Bounded to stay within
+# the model's rate limits. `_claude_screen` swallows its own errors, so a failed
+# read degrades to a flagged decision rather than aborting the batch.
+_SCREEN_CONCURRENCY = 8
 
 # How the batch clinical read is polled: the Messages Batch API usually completes
 # within an hour (max 24h). We poll every 15s up to an hour before giving up and
@@ -333,9 +341,16 @@ def screen_candidates(
             )
             decisions_by_id.update(judged)
         else:
-            for nct in to_read:
-                decisions_by_id[nct] = _claude_screen(
-                    question, nct, studies_by_id[nct], client
-                )
+            workers = min(_SCREEN_CONCURRENCY, len(to_read))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(
+                        _claude_screen, question, nct, studies_by_id[nct], client
+                    ): nct
+                    for nct in to_read
+                }
+                for future in as_completed(futures):
+                    nct = futures[future]
+                    decisions_by_id[nct] = future.result()
 
     return [decisions_by_id[nct] for nct in ordered]
