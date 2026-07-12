@@ -78,7 +78,7 @@ export function Ask() {
             }}
             rows={4}
             aria-label="Clinical question"
-            placeholder="e.g. In adults with type 2 diabetes, do GLP-1 receptor agonists reduce MACE versus placebo?"
+            placeholder="Ask a clinical question in PICO form — population, intervention, comparator, and one outcome."
             className="max-h-64 w-full resize-none overflow-y-auto rounded-2xl bg-transparent p-4 pr-14 text-left text-[16px] leading-7 text-ink-light outline-none placeholder:text-ink-muted-light"
           />
           <button
