@@ -1,7 +1,9 @@
 # Living Meta-Analysis Tool: Build Context
 
+The product ships to users as **Strata** (tagline "Living evidence"). "Living Meta-Analysis Tool" is the internal build name used throughout this document; the two refer to the same thing.
+
 ## One-line pitch
-A living meta-analysis tool that finds the trials, extracts the evidence with full provenance, and pools it into a current, auditable answer to a clinical question that updates itself as new results land.
+A living meta-analysis tool that finds the trials, extracts the evidence with full provenance, and pools it into a current, auditable answer to a clinical question that updates itself as new results land. A market-intelligence layer sits on top: the same living evidence, arranged as a competitive landscape of assets, indications, and development stages over time.
 
 ## Outcome
 The user asks a clinical question in PICO form for one outcome. The tool returns a single pooled answer: an effect estimate with confidence interval, a forest plot, heterogeneity measures, and a plain-language summary. Every number is traceable to its source trial and snippet. When a new trial reads out, the tool re-runs and flags whether the estimate or the conclusion changed, so the evidence base never goes stale.
@@ -130,18 +132,33 @@ Detect when a trial only reports outcomes this way and route it to manual review
 ## The rule that holds it together
 Pool only numbers that can be traced to a source and pass validation. Report what was excluded and why. Refuse a confident pooled estimate when heterogeneity is high or data is thin.
 
+## Market intelligence layer
+The same living evidence, arranged as a competitive landscape. The connecting idea: a meta-analysis is the evidence contents of one cell in a time-versioned competitive matrix. The competitive layer is the skeleton — asset by indication by development stage, over time; the pool is the flesh — does it work, at what certainty, traceable to source. Both share the same discipline: provenance on every claim, the living-update trigger, and abstention rather than invention (conflicts are flagged, not silently resolved). Code lives in `livemeta/core/ci/`; the internal package keeps the `ci` name while the user-facing surface is called Market Intelligence.
+
+The landscape is assembled deterministically from ClinicalTrials.gov modules the tool already fetches: most-advanced sourced phase wins, and a source reporting a lower stage at or after another's higher claim is marked a conflict rather than overwritten. An as-of date filter lets the whole matrix time-travel to an earlier state. Each cell joins to its living pooled evidence through a measure-aware badge (benefit proven, evidence pending, or not enough data yet), with the underlying HR, CI, and GRADE kept for hover and drill-in.
+
+Capabilities built on this spine:
+- **Change feed**: diff the landscape between two as-of dates and surface evidence moves.
+- **Milestone radar**: upcoming primary-completion dates bucketed by quarter.
+- **Side-by-side compare**: safety-critical. Compares operational facts only and abstains from any efficacy verdict, since a naive indirect comparison across trials is not valid; evidence sits behind a "not directly comparable" gate with no shared axis or declared winner.
+- **Mechanism-of-action clusters**: infer a drug class (Claude, with a WHO INN-stem fallback) and group the landscape by it.
+- **Company pipeline**: a `/company/:name` view of a sponsor's whole cross-indication pipeline, reached by clicking any sponsor name.
+- **Natural-language front door**: a chat router (LLM with a deterministic keyword fallback so it works offline) that dispatches a market question to the right lens.
+
+Surfaced with the same parity discipline as the core: REST endpoints under `/api/landscape/*`, `/api/compare`, `/api/company/*`, and `/api/market/ask`; matching MCP tools (`map_landscape`, `track_asset`, `compare_assets`, `company_pipeline`, `market_ask`, and others); and web routes under `/market` and `/company`. CLI parity for these lenses is a known gap, deliberately left rather than shipped half-done.
+
 ## Tech stack
 - Python.
 - MCP Python SDK for the server.
-- Meta-analysis library: check `pymare` first for REML support, with R `metafor` via `rpy2` as the fallback if REML or HKSJ are missing. `statsmodels.stats.meta_analysis` covers DerSimonian-Laird. Do not hand-roll pooling. `scipy` and `numpy` for support.
+- Meta-analysis library: pooling runs through R `metafor` (REML + HKSJ) called over an `Rscript` subprocess bridge, not `rpy2` — this sidesteps the arm64-Python / x86-R architecture mismatch. A pure-Python `pymare` REML path is the fallback, and the two are cross-validated in tests; select with `LIVEMETA_STATS_ENGINE`. `statsmodels.stats.meta_analysis` covers DerSimonian-Laird. Do not hand-roll pooling. `scipy` and `numpy` for support.
 - `matplotlib` for the forest plot.
 - `httpx` or `requests` for the ClinicalTrials.gov and Europe PMC APIs.
 - A fully functioning web UI platform for the front end, built against the reference designs in `stitch_livemeta_precision_evidence_system/`.
 
 ## Demo plan
-- Pick a clinical question where the answer is already well established, so judges can sanity-check the output against known truth. [DECISION NEEDED: lock the exact question.]
-- Scope to one question, one outcome type, five to ten trials from structured results.
-- Memorable moment: inject an additional trial live and watch the pooled estimate and conclusion update.
+- Locked question: GLP-1 receptor agonists versus placebo for 3-point MACE, a time-to-event outcome pooled on the log hazard-ratio scale. The answer is well established, so judges can sanity-check the output against known truth: the live run reproduces the published estimate, HR 0.86 (0.79–0.94).
+- Scope to that one question and outcome, over eight cardiovascular outcome trials (ELIXA, LEADER, SUSTAIN-6, EXSCEL, HARMONY, REWIND, PIONEER-6, AMPLITUDE-O) with structured arm-level results from ClinicalTrials.gov v2.
+- Memorable moment: inject an additional trial live and watch the pooled estimate and conclusion update. On the market-intelligence layer, move the as-of time slider and watch the competitive landscape recede to an earlier state.
 
 ## Main risks and mitigations
 - Extraction errors: prefer structured results over free text, require provenance, validate before pooling.
