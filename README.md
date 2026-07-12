@@ -27,10 +27,6 @@ Two other rules fall out of this. Every extracted value and every risk-of-bias j
 7. Report: forest plot, funnel plot with Egger's test, leave-one-out sensitivity check, PRISMA record-flow, and a plain-language summary with heterogeneity warnings.
 8. Living layer: when a new trial lands, re-run, re-pool, and diff against the last version.
 
-### Checking it against a known answer
-
-The reference question is GLP-1 receptor agonists versus placebo for major adverse cardiovascular events. The published figure is a hazard ratio of about 0.86 (0.80 to 0.93) across 8 trials ([Sattar 2021](https://doi.org/10.1016/S2213-8587(21)00203-5)). Strata reproduces it from structured data. In the demo, adding the 8th trial (AMPLITUDE-O) re-pools the estimate and updates the competitive standing.
-
 ## Architecture
 
 There are three front ends over one core:
