@@ -25,7 +25,6 @@ const market = [
   { to: "/market/changes", label: "What changed", icon: "history", end: false },
   { to: "/market/radar", label: "Readout radar", icon: "event_upcoming", end: false },
   { to: "/market/compare", label: "Compare", icon: "compare_arrows", end: false },
-  { to: "/market/moa", label: "By mechanism", icon: "science", end: false },
 ];
 
 // The current review id, if we're inside a /reviews/:id/... route — so the

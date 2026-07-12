@@ -116,20 +116,27 @@ export function MarketHub() {
                     {turn.answer.narrative}
                   </p>
                   <MarketResult answer={turn.answer} />
-                  {turn.answer.suggestions.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {turn.answer.suggestions.map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => ask(s)}
-                          className="inline-flex items-center gap-1 rounded-full hairline bg-surface-container-low px-3 py-1 text-[12px] text-ink-muted-light hover:text-ink-light"
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    // The mechanism-of-action lens is hidden from the UI, so drop
+                    // any follow-up chips that would steer back into it.
+                    const chips = turn.answer.suggestions.filter(
+                      (s) => !/mechanism/i.test(s),
+                    );
+                    return chips.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {chips.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => ask(s)}
+                            className="inline-flex items-center gap-1 rounded-full hairline bg-surface-container-low px-3 py-1 text-[12px] text-ink-muted-light hover:text-ink-light"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               </div>
             )}

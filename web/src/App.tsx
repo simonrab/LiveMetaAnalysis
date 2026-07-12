@@ -24,7 +24,6 @@ import { MarketHub } from "./pages/MarketHub";
 import { LandscapeChanges } from "./pages/LandscapeChanges";
 import { AssetCompare } from "./pages/AssetCompare";
 import { MilestoneRadarPage } from "./pages/MilestoneRadarPage";
-import { MoaClusters } from "./pages/MoaClusters";
 
 export default function App() {
   return (
@@ -41,7 +40,6 @@ export default function App() {
               <Route path="/market/changes" element={<LandscapeChanges />} />
               <Route path="/market/compare" element={<AssetCompare />} />
               <Route path="/market/radar" element={<MilestoneRadarPage />} />
-              <Route path="/market/moa" element={<MoaClusters />} />
               <Route path="/landscape" element={<CompetitorLandscape />} />
               <Route path="/company/:name" element={<CompanyPipeline />} />
               <Route path="/landscape/asset/:name" element={<AssetProfile />} />
