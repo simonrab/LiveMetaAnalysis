@@ -23,6 +23,13 @@ def _fetch(nct: str) -> dict:
     return json.loads((FIXTURES / f"{nct}.json").read_text())
 
 
+class _SearchClient:
+    """Serves the recorded GLP-1 trial set for the demo's discovery search."""
+
+    def search_agent_studies(self, intervention, term=None, page_size=1000, **kwargs):
+        return [{"nct_id": nct, "title": nct} for nct in GLP1_CVOT_TRIALS]
+
+
 @scenario("cli.feature", "Run the locked demo and read the report with a forest plot")
 def test_run_demo_report():
     pass
@@ -59,13 +66,13 @@ def _seed7(tmp_path):
 @given("a saved command-line review of the eight GLP-1 MACE trials", target_fixture="context")
 def _seed8(tmp_path):
     store = SnapshotStore(tmp_path)
-    main(argv=["run", "--demo"], fetch_study=_fetch, store=store)
+    main(argv=["run", "--demo"], fetch_study=_fetch, store=store, search_client=_SearchClient())
     return {"store": store, "out": ""}
 
 
 @when("I run the demo review from the command line")
 def _run_demo(context, capsys):
-    main(argv=["run", "--demo"], fetch_study=_fetch, store=context["store"])
+    main(argv=["run", "--demo"], fetch_study=_fetch, store=context["store"], search_client=_SearchClient())
     context["out"] = capsys.readouterr().out
 
 

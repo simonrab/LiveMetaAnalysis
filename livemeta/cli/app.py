@@ -138,12 +138,18 @@ def _emit_review(result, args, *, plot_pool=True) -> int:
 # --- handlers ---------------------------------------------------------------
 
 
-def _cmd_run(args, *, store, fetch_study, parse) -> int:
+def _cmd_run(args, *, store, fetch_study, parse, search_client) -> int:
     from ..core import demo, pipeline
+    from ..core import search as search_mod
     from ..core.schema import ReviewResult
 
+    search_fn = None
     if args.demo:
-        question = demo.GLP1_MACE_QUESTION
+        # The demo discovers its trials live rather than replaying a curated list.
+        question = demo.GLP1_MACE_DISCOVER
+        search_fn = lambda pico: [
+            c.nct_id for c in search_mod.search_trials(pico, client=search_client)
+        ]
     elif args.question_text:
         question = parse(args.question_text)
     else:
@@ -151,7 +157,7 @@ def _cmd_run(args, *, store, fetch_study, parse) -> int:
         return EXIT_INTERNAL
 
     final: ReviewResult | None = None
-    for event in pipeline.run_review(question, fetch_study):
+    for event in pipeline.run_review(question, fetch_study, search_fn=search_fn):
         if not args.quiet and not args.json:
             _err(render.progress_line(event))
         if event.stage == "done" and event.data is not None:
@@ -459,6 +465,7 @@ def main(argv=None, *, fetch_study=None, store=None, search_client=None, parse=N
                 store=_resolve_store(args, store),
                 fetch_study=_resolve_fetch(args, fetch_study),
                 parse=_resolve_parse(args, parse),
+                search_client=_resolve_search(args, search_client),
             )
         if args.command == "search":
             return _cmd_search(args, search_client=_resolve_search(args, search_client))

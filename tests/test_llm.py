@@ -49,7 +49,8 @@ class _StubSearch:
 def test_locked_demo_question_returns_demo_without_a_key():
     q = llm.parse_question(demo.GLP1_MACE_QUESTION.text)
     assert q.id == "glp1-mace"
-    assert len(q.trial_ids) == 8
+    # The demo question carries no curated trial list — it discovers on run.
+    assert q.trial_ids == []
 
 
 def test_llm_parses_novel_question_and_searches_for_trials():

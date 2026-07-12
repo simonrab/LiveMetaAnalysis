@@ -106,7 +106,9 @@ def parse_question(
     the candidate ids. Any failure degrades to a best-effort parse.
     """
     if _matches_demo(text):
-        return demo.GLP1_MACE_QUESTION.model_copy(update={"text": text})
+        # The curated demo PICO, but with no trial list — running it discovers the
+        # trials through the real search like any other question (no hardcoding).
+        return demo.GLP1_MACE_DISCOVER.model_copy(update={"text": text})
 
     client = llm_client
     if client is None and os.environ.get("ANTHROPIC_API_KEY"):

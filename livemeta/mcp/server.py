@@ -137,13 +137,18 @@ def get_store() -> SnapshotStore:
 
 
 def _resolve_question(question_id: str) -> Question:
-    """Find the question to run: the locked demo, or the latest saved snapshot."""
-    if question_id == demo.GLP1_MACE_QUESTION.id:
-        return demo.GLP1_MACE_QUESTION
+    """Find the question to run: the demo (discovered live), or a saved snapshot."""
+    if question_id == demo.GLP1_MACE_DISCOVER.id:
+        return demo.GLP1_MACE_DISCOVER
     latest = get_store().load_latest(question_id)
     if latest is not None:
         return latest.question
     raise ValueError(f"Unknown question_id: {question_id!r}")
+
+
+def _discover(pico) -> list[str]:
+    """Discover candidate NCT ids for a PICO via the injected CT.gov client."""
+    return [c.nct_id for c in search_mod.search_trials(pico, client=get_client())]
 
 
 # --- Tools -------------------------------------------------------------------
@@ -324,7 +329,9 @@ def run_review(question_id: str = "glp1-mace") -> ReviewResult:
     persists the result so `update` has a baseline to diff against.
     """
     question = _resolve_question(question_id)
-    result = run_review_collect(question, get_client().fetch_study)
+    result = run_review_collect(
+        question, get_client().fetch_study, search_fn=_discover
+    )
     get_store().save_snapshot(result)
     return result
 

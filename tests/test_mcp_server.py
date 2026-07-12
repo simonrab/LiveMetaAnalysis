@@ -31,7 +31,7 @@ class FixtureClient:
         return [{"nct_id": "NCT01179048", "title": "LEADER"}]
 
     def search_agent_studies(self, intervention, term=None, page_size=1000, **kwargs):
-        return [{"nct_id": "NCT01179048", "title": "LEADER"}]
+        return [{"nct_id": nct, "title": nct} for nct in GLP1_CVOT_TRIALS]
 
 
 @pytest.fixture(autouse=True)
@@ -44,8 +44,8 @@ def wired(tmp_path):
 def test_search_trials_returns_candidates():
     p = GLP1_MACE_QUESTION.pico
     hits = server.search_trials(p.population, p.intervention, p.comparator, p.outcome)
-    assert hits and isinstance(hits[0], TrialCandidate)
-    assert hits[0].nct_id == "NCT01179048"
+    assert hits and all(isinstance(h, TrialCandidate) for h in hits)
+    assert "NCT01179048" in {h.nct_id for h in hits}
 
 
 def test_extract_effects_returns_extraction_with_provenance():
@@ -81,7 +81,8 @@ def test_run_review_saves_snapshot_and_returns_result():
 def test_parse_question_recognizes_the_locked_demo():
     q = server.parse_question(GLP1_MACE_QUESTION.text)
     assert q.id == "glp1-mace"
-    assert len(q.trial_ids) == 8
+    # The demo question carries no curated trial list — it discovers on run.
+    assert q.trial_ids == []
 
 
 def test_record_decision_flags_trial_and_repools():
