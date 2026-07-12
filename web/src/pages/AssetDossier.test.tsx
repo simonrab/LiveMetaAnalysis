@@ -53,33 +53,25 @@ function renderPage() {
 describe("AssetDossier", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("renders trials, geography, readouts, approvals, and sub-indications", async () => {
+  it("renders trials, geography, readouts, and sub-indications", async () => {
     vi.mocked(getAssetDossier).mockResolvedValue(dossier);
     renderPage();
     expect(await screen.findByText("Semaglutide")).toBeInTheDocument();
     expect(screen.getByText("Obesity + established CVD")).toBeInTheDocument();
-    expect(screen.getByText(/OZEMPIC/)).toBeInTheDocument();
-    expect(screen.getByText("NDA209637")).toBeInTheDocument();
-    // Approvals come from openFDA (US FDA only) — flag the scope so absence isn't
-    // read as "not approved anywhere".
-    expect(screen.getByText(/US FDA only/i)).toBeInTheDocument();
     expect(screen.getByText(/United States/)).toBeInTheDocument();
     // Pooled evidence is not shown on the market-intelligence surface, even though
     // the sub-indication carries a badge.
     expect(screen.queryByTestId("evidence-pooled")).not.toBeInTheDocument();
   });
 
-  it("links each approval out to its Drugs@FDA source page", async () => {
+  it("does not render regulatory approvals (openFDA disabled)", async () => {
     vi.mocked(getAssetDossier).mockResolvedValue(dossier);
     renderPage();
-    const link = await screen.findByRole("link", { name: /NDA209637/ });
-    // Drugs@FDA overview page keyed by the numeric application number.
-    expect(link).toHaveAttribute(
-      "href",
-      "https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo=209637"
-    );
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    await screen.findByText("Semaglutide");
+    // The openFDA approvals surface was removed: no section, no brand, no app no.
+    expect(screen.queryByTestId("approvals-list")).not.toBeInTheDocument();
+    expect(screen.queryByText(/US FDA only/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("NDA209637")).not.toBeInTheDocument();
   });
 
   it("shows a source toggle", async () => {

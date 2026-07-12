@@ -9,7 +9,6 @@ import {
   MAX_YEAR,
   PipelineBoard,
 } from "../components/PipelineBoard";
-import { ApprovalsList } from "../components/ApprovalsList";
 import { LoadingState } from "../components/Loading";
 
 function Stat({ value, label }: { value: number; label: string }) {
@@ -71,7 +70,6 @@ export function CompanyPipeline() {
           <Stat value={pipeline.assets.length} label="Assets" />
           <Stat value={trialCount} label="Programs" />
           <Stat value={indications.length} label="Indications" />
-          <Stat value={pipeline.approvals.length} label="FDA approvals" />
         </div>
       )}
 
@@ -107,25 +105,6 @@ export function CompanyPipeline() {
             asOf={pipeline.as_of}
             indication={indication}
           />
-
-          <section className="mt-8">
-            <h2 className="mb-3 flex items-center gap-2 text-section-sm text-ink-light">
-              <Icon name="verified" size={18} className="text-ink-muted-light" />
-              FDA approvals
-            </h2>
-            <p className="mb-2 text-[12px] text-ink-muted-light">
-              <Icon name="flag" size={13} className="mr-1 align-[-2px] text-ink-muted-light" />
-              Source: openFDA — <span className="font-medium text-ink-light">US FDA only</span>.
-              Absence here does not imply the drug is unapproved elsewhere (e.g. EMA, PMDA).
-            </p>
-            {pipeline.approvals.length === 0 ? (
-              <p className="text-[13px] text-ink-muted-light">
-                No US FDA approvals found for this sponsor.
-              </p>
-            ) : (
-              <ApprovalsList approvals={pipeline.approvals} />
-            )}
-          </section>
         </>
       )}
 

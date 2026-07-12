@@ -117,10 +117,15 @@ def set_openfda(client: OpenFdaClient) -> None:
     _openfda = client
 
 
-def get_openfda() -> OpenFdaClient:
-    global _openfda
-    if _openfda is None:
-        _openfda = OpenFdaClient()
+def get_openfda() -> OpenFdaClient | None:
+    """The openFDA approvals client, or None when disabled.
+
+    Disabled for now: the live openFDA lookups were surfacing inaccurate
+    approvals, so we default to None to suppress all regulatory-approval
+    fetching. A client set via ``set_openfda`` (e.g. in tests) still takes
+    precedence; restore ``OpenFdaClient()`` below to re-enable by default. The
+    service layer treats a None client as "no approvals" without erroring.
+    """
     return _openfda
 
 

@@ -120,18 +120,6 @@ def _phase_spread(trials: Sequence[TrialDetail]) -> str:
     return " · ".join(parts) or "—"
 
 
-def _approvals_cell(dossier: AssetDossier) -> str:
-    """FDA approval count plus brand names (from openFDA), or '—' when none."""
-    apps = dossier.approvals
-    if not apps:
-        return "—"
-    brands = sorted({b for a in apps for b in (a.brand_names or [])})
-    label = str(len(apps))
-    if brands:
-        label += " · " + ", ".join(brands[:3])
-    return label
-
-
 def _next_readout(trials: Sequence[TrialDetail], today: str) -> str | None:
     future = [
         t.primary_completion_date
@@ -177,7 +165,7 @@ def compare_assets(
 
     inds = {a: _primary_indication(d, indication) for a, d in dossiers.items()}
 
-    # Operational rows — counts, phase spread, approvals, geography, timing.
+    # Operational rows — counts, phase spread, geography, timing.
     trials_by_asset = {a: d.trials for a, d in dossiers.items()}
     rows: list[ComparisonRow] = [
         ComparisonRow(label="Indication", values=[inds[a] or "—" for a in assets]),
@@ -190,9 +178,6 @@ def compare_assets(
             values=[str(_count_terminated(trials_by_asset[a])) for a in assets],
         ),
         ComparisonRow(label="Phases", values=[_phase_spread(trials_by_asset[a]) for a in assets]),
-        ComparisonRow(
-            label="FDA approvals", values=[_approvals_cell(dossiers[a]) for a in assets]
-        ),
         _count_row("Countries", [len(dossiers[a].countries) for a in assets]),
         ComparisonRow(
             label="Next readout",

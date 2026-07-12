@@ -444,7 +444,10 @@ export interface CompanyPipeline {
 
 export type Source = "ctgov" | "pubmed" | "openfda" | "announcement" | "filing";
 
-export const STRUCTURED_SOURCES: Source[] = ["ctgov", "pubmed", "openfda"];
+// openFDA is intentionally omitted: the approvals lookups were surfacing
+// inaccurate data, so the source is disabled (backend returns no client) and
+// hidden from the picker. Re-add "openfda" here to restore it.
+export const STRUCTURED_SOURCES: Source[] = ["ctgov", "pubmed"];
 export const FREE_TEXT_SOURCES: Source[] = ["announcement", "filing"];
 
 export const SOURCE_LABEL: Record<Source, string> = {

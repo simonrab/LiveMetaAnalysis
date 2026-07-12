@@ -83,16 +83,15 @@ describe("CompanyPipeline", () => {
     expect(screen.getByTestId("phase-col-phase_1")).toBeInTheDocument();
   });
 
-  it("renders the FDA approvals section linking to Drugs@FDA", async () => {
+  it("does not render an FDA approvals section (openFDA disabled)", async () => {
     vi.mocked(getCompanyPipeline).mockResolvedValue(pipeline);
     renderPage();
 
-    const approvals = await screen.findByTestId("approvals-list");
-    const link = within(approvals).getByRole("link", { name: /NDA209637/ });
-    expect(link).toHaveAttribute(
-      "href",
-      "https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo=209637"
-    );
+    await screen.findByRole("heading", { name: "Novo Nordisk" });
+    // The openFDA approvals surface was removed: no section, no stat, no app no.
+    expect(screen.queryByTestId("approvals-list")).not.toBeInTheDocument();
+    expect(screen.queryByText("FDA approvals")).not.toBeInTheDocument();
+    expect(screen.queryByText("NDA209637")).not.toBeInTheDocument();
   });
 
   it("narrows the board to one indication via the filter", async () => {

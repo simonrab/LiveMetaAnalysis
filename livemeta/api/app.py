@@ -47,7 +47,6 @@ from ..core.ci.schema import (
     MoaLandscape,
     SourceSelection,
 )
-from ..core.sources.openfda import OpenFdaClient
 from ..core.diff import diff_reviews, status_from_diff
 from ..core.schema import (
     DiversityDecision,
@@ -153,8 +152,14 @@ def get_ci_company_search():
 
 
 def get_openfda():
-    """Injectable openFDA approvals client (overridden in tests)."""
-    return OpenFdaClient()
+    """Injectable openFDA approvals client (overridden in tests).
+
+    Disabled for now: the live openFDA lookups were surfacing inaccurate
+    approvals, so we return None to suppress all regulatory-approval fetching.
+    Restore ``OpenFdaClient()`` here to re-enable. The service layer treats a
+    None client as "no approvals" without erroring.
+    """
+    return None
 
 
 class ParseRequest(BaseModel):
