@@ -24,3 +24,6 @@ node_modules/
 web/dist/
 # static_web/ is the built SPA the backend serves; it must be uploaded by
 # `railway up` (which honours .gitignore), so it is intentionally not ignored.
+
+# Vercel CT.gov egress proxy (deployed standalone; kept out of the public repo)
+vercel-ctgov-proxy/
