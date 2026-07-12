@@ -54,6 +54,9 @@ class _FakeSearchClient:
     def search_studies(self, query, page_size=1000, interventional_only=False):
         return [{"nct_id": nct, "title": nct} for nct in self._ids]
 
+    def search_agent_studies(self, intervention, term=None, page_size=1000, **kwargs):
+        return [{"nct_id": nct, "title": nct} for nct in self._ids]
+
 
 def _seed_baseline(store) -> None:
     q7 = GLP1_MACE_QUESTION.model_copy(update={"trial_ids": GLP1_CVOT_TRIALS[:7]})

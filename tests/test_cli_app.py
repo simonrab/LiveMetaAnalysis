@@ -28,6 +28,9 @@ class _SearchClient:
     def search_studies(self, query, page_size=1000, interventional_only=False):
         return [{"nct_id": nct, "title": nct} for nct in GLP1_CVOT_TRIALS]
 
+    def search_agent_studies(self, intervention, term=None, page_size=1000, **kwargs):
+        return [{"nct_id": nct, "title": nct} for nct in GLP1_CVOT_TRIALS]
+
 
 @pytest.fixture
 def store(tmp_path):
@@ -206,7 +209,3 @@ def test_screening_decision_reruns_and_saves(store, capsys):
     assert store.list_versions("glp1-mace") == [1, 2]
 
 
-def test_seed_demo_is_idempotent(store, capsys):
-    main(argv=["seed-demo"], fetch_study=_fetch, store=store)
-    main(argv=["seed-demo"], fetch_study=_fetch, store=store)
-    assert store.list_versions("glp1-mace") == [1]

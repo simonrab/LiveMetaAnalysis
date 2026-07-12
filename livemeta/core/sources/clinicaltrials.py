@@ -97,6 +97,47 @@ class ClinicalTrialsClient:
             )
         return hits
 
+    def search_agent_studies(
+        self,
+        intervention: str,
+        term: str | None = None,
+        page_size: int = 1000,
+        interventional_only: bool = True,
+        with_results_only: bool = True,
+    ) -> list[dict]:
+        """Search one drug for the systematic candidate set; return [{nct_id, title}].
+
+        Scopes to `query.intr` (the intervention field) because CT.gov indexes a
+        trial by its specific agent, not its pharmacologic class — so a class
+        question must be expanded upstream and each agent searched here. An optional
+        `term` (`query.term`) narrows on the outcome; `interventional_only` and
+        `with_results_only` (`results:with`) are the first deterministic screens —
+        a pooling review can only use randomized trials that actually posted
+        results.
+        """
+        params: dict[str, object] = {
+            "query.intr": intervention,
+            "pageSize": page_size,
+            "fields": "protocolSection.identificationModule",
+        }
+        if term:
+            params["query.term"] = term
+        if interventional_only:
+            params["filter.advanced"] = "AREA[StudyType]INTERVENTIONAL"
+        if with_results_only:
+            params["aggFilters"] = "results:with"
+        resp = httpx.get(
+            f"{self._base}/studies", params=params, headers=_HEADERS, timeout=self._timeout
+        )
+        resp.raise_for_status()
+        hits = []
+        for study in resp.json().get("studies", []):
+            ident = study.get("protocolSection", {}).get("identificationModule", {})
+            hits.append(
+                {"nct_id": ident.get("nctId", ""), "title": ident.get("briefTitle", "")}
+            )
+        return hits
+
     # Modules needed to place a drug in the competitive pipeline: who sponsors it,
     # what phase, its status and dated milestones, the drug name, the indication.
     _PIPELINE_FIELDS = ",".join(

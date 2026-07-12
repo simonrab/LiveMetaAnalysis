@@ -89,10 +89,22 @@ def test_demo_question_endpoint():
     r = client.get("/api/demo")
     assert r.status_code == 200
     assert r.json()["id"] == "glp1-mace"
+    # Discovery variant: no pre-baked trial list — the run searches for them.
+    assert r.json()["trial_ids"] == []
 
 
 def test_run_endpoint_returns_pooled_result():
-    r = client.post("/api/reviews/run", json=None)
+    from livemeta.api.app import get_demo_search
+
+    # The demo run discovers its trials via search; drive discovery offline with
+    # the fixture set so the run is deterministic and network-free.
+    app.dependency_overrides[get_demo_search] = lambda: (
+        lambda _pico: list(demo.GLP1_CVOT_TRIALS)
+    )
+    try:
+        r = client.post("/api/reviews/run", json=None)
+    finally:
+        app.dependency_overrides.pop(get_demo_search, None)
     assert r.status_code == 200
     body = r.json()
     assert round(body["pool"]["estimate"], 2) == 0.86
@@ -101,16 +113,27 @@ def test_run_endpoint_returns_pooled_result():
 
 
 def test_ws_streams_pipeline_events(store):
-    with client.websocket_connect("/ws/review") as ws:
-        ws.send_json({"mode": "demo"})
-        stages = []
-        while True:
-            ev = ws.receive_json()
-            stages.append(ev["stage"])
-            if ev["stage"] == "done":
-                assert "reduced" in ev["message"].lower()
-                break
+    from livemeta.api.app import get_demo_search
+
+    # The demo run discovers its trials via search; drive discovery offline with
+    # the fixture set so the stream stays deterministic.
+    app.dependency_overrides[get_demo_search] = lambda: (
+        lambda _pico: list(demo.GLP1_CVOT_TRIALS)
+    )
+    try:
+        with client.websocket_connect("/ws/review") as ws:
+            ws.send_json({"mode": "demo"})
+            stages = []
+            while True:
+                ev = ws.receive_json()
+                stages.append(ev["stage"])
+                if ev["stage"] == "done":
+                    assert "reduced" in ev["message"].lower()
+                    break
+    finally:
+        app.dependency_overrides.pop(get_demo_search, None)
     assert stages[0] == "parse"
+    assert "search" in stages  # a real discovery stage ran
     assert "pool" in stages
     assert stages.count("extract") == 8
     # A completed run is persisted so it appears on the dashboard.
@@ -176,18 +199,6 @@ def test_get_review_returns_latest_and_404s_when_missing(store):
     assert client.get("/api/reviews/does-not-exist").status_code == 404
 
 
-def test_seed_demo_creates_seven_trial_baseline(store):
-    r = client.post("/api/reviews/demo/seed")
-    assert r.status_code == 200
-    assert store.list_versions("glp1-mace") == [1]
-    latest = store.load_latest("glp1-mace")
-    assert len(latest.question.trial_ids) == 7
-    assert demo.HELD_OUT_TRIAL not in latest.question.trial_ids
-    # Idempotent: seeding again does not add a version.
-    client.post("/api/reviews/demo/seed")
-    assert store.list_versions("glp1-mace") == [1]
-
-
 def _seed_seven(store):
     """Persist a 7-trial GLP-1 baseline (v1) so an inject can add the eighth."""
     from livemeta.core.pipeline import run_review_collect
@@ -224,6 +235,9 @@ class _FakeSearchClient:
         self._ids = list(nct_ids)
 
     def search_studies(self, query, page_size=1000, interventional_only=False):
+        return [{"nct_id": nct, "title": nct} for nct in self._ids]
+
+    def search_agent_studies(self, intervention, term=None, page_size=1000, **kwargs):
         return [{"nct_id": nct, "title": nct} for nct in self._ids]
 
 

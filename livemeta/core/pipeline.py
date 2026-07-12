@@ -187,11 +187,19 @@ def _appraise(
     return rob, grade, loo
 
 
+def _default_search(pico, llm_client=None) -> list[str]:
+    """Discover candidate NCT ids for a PICO via the real systematic search."""
+    from . import search as search_mod
+
+    return [c.nct_id for c in search_mod.search_trials(pico, llm_client=llm_client)]
+
+
 def run_review(
     question: Question,
     fetch_study: FetchStudy | None = None,
     llm_client=None,
     screening_overrides: dict | None = None,
+    search_fn: Callable[[object], list[str]] | None = None,
 ) -> Iterator[PipelineEvent]:
     fetch_study = fetch_study or SourceRouter().fetch
 
@@ -200,6 +208,25 @@ def run_review(
         message="Parsed question into PICO.",
         data={"pico": question.pico.model_dump()},
     )
+
+    # Discovery: a question handed no trial_ids is a real systematic search, not a
+    # replay of a curated list. Expand the PICO's intervention and search
+    # ClinicalTrials.gov live; the screening gate downstream narrows the candidates
+    # to the eligible set. A question that already carries trial_ids (an offline
+    # fixture run, or the living-update path) skips this untouched.
+    if not question.trial_ids:
+        search = search_fn or (lambda pico: _default_search(pico, llm_client=llm_client))
+        discovered = search(question.pico)
+        question = question.model_copy(update={"trial_ids": discovered})
+        yield PipelineEvent(
+            stage="search",
+            message=(
+                f"Searched ClinicalTrials.gov for {question.pico.intervention} trials — "
+                f"found {len(discovered)} candidates."
+            ),
+            data={"trial_ids": discovered},
+        )
+
     yield PipelineEvent(
         stage="retrieve",
         message=f"Retrieving {len(question.trial_ids)} candidate trials.",
@@ -392,11 +419,16 @@ def run_review_collect(
     fetch_study: FetchStudy | None = None,
     llm_client=None,
     screening_overrides: dict | None = None,
+    search_fn: Callable[[object], list[str]] | None = None,
 ) -> ReviewResult:
     """Drain the pipeline and return the final ReviewResult."""
     result = ReviewResult(question=question)
     for event in run_review(
-        question, fetch_study, llm_client=llm_client, screening_overrides=screening_overrides
+        question,
+        fetch_study,
+        llm_client=llm_client,
+        screening_overrides=screening_overrides,
+        search_fn=search_fn,
     ):
         if event.stage == "done" and event.data is not None:
             result = ReviewResult.model_validate(event.data)

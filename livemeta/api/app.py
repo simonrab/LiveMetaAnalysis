@@ -114,6 +114,21 @@ def get_search_client():
     return ClinicalTrialsClient()
 
 
+def get_demo_search():
+    """Injectable discovery search for the demo run (overridden in tests offline).
+
+    Returns a `search_fn(pico) -> list[str]` the pipeline calls when the demo
+    question arrives with no trial_ids, so the live demo genuinely searches
+    ClinicalTrials.gov instead of being handed a curated list.
+    """
+    search_client = ClinicalTrialsClient()
+
+    def search_fn(pico):
+        return demo.discover_demo_trials(pico, search_client=search_client)
+
+    return search_fn
+
+
 def get_ci_search():
     """Injectable CT.gov pipeline search for the competitive landscape.
 
@@ -206,7 +221,9 @@ def _summary(result: ReviewResult, versions: int, status: str) -> ReviewSummary:
 
 @app.get("/api/demo", response_model=Question)
 def demo_question() -> Question:
-    return demo.GLP1_MACE_QUESTION
+    # The discovery variant (no trial_ids): the Ask screen shows the PICO, and the
+    # trials are found by the real search when the run starts — not pre-baked.
+    return demo.GLP1_MACE_DISCOVER
 
 
 @app.post("/api/parse", response_model=Question)
@@ -219,9 +236,16 @@ def run_review(
     question: Question | None = None,
     fetch=Depends(get_fetch_study),
     store: SnapshotStore = Depends(get_store),
+    demo_search=Depends(get_demo_search),
 ) -> ReviewResult:
-    q = question or demo.GLP1_MACE_QUESTION
-    result = pipeline.run_review_collect(q, fetch)
+    # No question means the demo: run its PICO through the live discovery search
+    # rather than a curated trial list. A supplied question already has candidates.
+    if question is None:
+        result = pipeline.run_review_collect(
+            demo.GLP1_MACE_DISCOVER, fetch, search_fn=demo_search
+        )
+    else:
+        result = pipeline.run_review_collect(question, fetch)
     store.save_snapshot(result)
     return result
 
@@ -237,21 +261,6 @@ def _dashboard_status(store: SnapshotStore, qid: str, versions: list[int], lates
         previous, latest, previous_version=versions[-2], current_version=versions[-1]
     )
     return status_from_diff(diff)
-
-
-@app.post("/api/reviews/demo/seed", response_model=ReviewResult)
-def seed_demo(
-    fetch=Depends(get_fetch_study), store: SnapshotStore = Depends(get_store)
-) -> ReviewResult:
-    """Seed the living-layer demo: the 7-trial GLP-1 baseline before AMPLITUDE-O.
-
-    Idempotent — returns the existing baseline if one is already saved, so the
-    demo can be reset by clearing the store rather than by stacking versions.
-    """
-    existing = store.load_latest(demo.GLP1_MACE_QUESTION.id)
-    if existing is not None:
-        return existing
-    return demo.seed_baseline(store, fetch)
 
 
 @app.get("/api/reviews", response_model=list[ReviewSummary])
@@ -646,12 +655,16 @@ async def ws_review(
     websocket: WebSocket,
     fetch=Depends(get_fetch_study),
     store: SnapshotStore = Depends(get_store),
+    demo_search=Depends(get_demo_search),
 ) -> None:
     await websocket.accept()
     try:
         payload = await websocket.receive_json()
         question = _question_from_payload(payload)
-        gen = pipeline.run_review(question, fetch)
+        # The demo question carries no trial_ids, so the pipeline runs the live
+        # discovery search; a user-supplied question already has its candidates.
+        search_fn = demo_search if not payload.get("question") else None
+        gen = pipeline.run_review(question, fetch, search_fn=search_fn)
 
         final: ReviewResult | None = None
         while True:
@@ -673,7 +686,7 @@ def _question_from_payload(payload: dict) -> Question:
     """A WS client either kicks off the demo or supplies a parsed Question."""
     if payload.get("question"):
         return Question.model_validate(payload["question"])
-    return demo.GLP1_MACE_QUESTION
+    return demo.GLP1_MACE_DISCOVER
 
 
 # --- Serve the built web UI (single-origin deploy) ---------------------------

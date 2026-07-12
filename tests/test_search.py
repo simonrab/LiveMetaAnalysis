@@ -94,6 +94,86 @@ def test_search_trials_filters_to_interventional_by_default():
 
 
 @respx.mock
+def test_client_search_agent_studies_scopes_to_intervention_with_results():
+    # Per-agent search: query.intr scopes to the drug (CT.gov indexes agents, not
+    # classes), and results:with keeps the candidate set to trials that can be
+    # pooled at all.
+    from livemeta.core.sources.clinicaltrials import ClinicalTrialsClient
+
+    route = respx.get(STUDIES_URL).mock(
+        return_value=httpx.Response(
+            200, json={"studies": [_ctgov_hit("NCT01179048", "LEADER")]}
+        )
+    )
+    hits = ClinicalTrialsClient().search_agent_studies(
+        "liraglutide", term="cardiovascular outcomes"
+    )
+
+    params = route.calls.last.request.url.params
+    assert params["query.intr"] == "liraglutide"
+    assert params["query.term"] == "cardiovascular outcomes"
+    assert params["aggFilters"] == "results:with"
+    assert "StudyType" in params["filter.advanced"]
+    assert hits == [{"nct_id": "NCT01179048", "title": "LEADER"}]
+
+
+class _FakeCtgov:
+    """A CT.gov client whose per-agent search returns a scripted hit list."""
+
+    def __init__(self, by_agent):
+        self._by_agent = {k.lower(): v for k, v in by_agent.items()}
+        self.searched = []
+
+    def search_agent_studies(self, intervention, term=None, **kwargs):
+        self.searched.append(intervention)
+        return [
+            {"nct_id": nct, "title": nct}
+            for nct in self._by_agent.get(intervention.lower(), [])
+        ]
+
+
+class _FakeExpandParsed:
+    def __init__(self, obj):
+        self.parsed_output = obj
+
+
+class _FakeExpandMessages:
+    def __init__(self, agents):
+        self._agents = agents
+
+    def parse(self, **kwargs):
+        from livemeta.core import expand
+
+        return _FakeExpandParsed(expand._AgentList(is_class=True, agents=self._agents))
+
+
+class _FakeExpandClient:
+    """A model client that expands the class into a fixed agent list."""
+
+    def __init__(self, agents):
+        self.messages = _FakeExpandMessages(agents)
+
+
+def test_search_trials_expands_class_and_unions_per_agent():
+    # The model expands the class into member agents; each is searched, and the
+    # hits are unioned and de-duplicated in first-seen order.
+    fake = _FakeCtgov(
+        {
+            "liraglutide": ["NCT_LEADER"],
+            "semaglutide": ["NCT_SUSTAIN", "NCT_PIONEER"],
+            "dulaglutide": ["NCT_REWIND", "NCT_LEADER"],  # LEADER repeats -> deduped
+        }
+    )
+    expander = _FakeExpandClient(["liraglutide", "semaglutide", "dulaglutide"])
+    hits = search.search_trials(_pico(), client=fake, llm_client=expander)
+
+    ids = [h.nct_id for h in hits]
+    assert ids == ["NCT_LEADER", "NCT_SUSTAIN", "NCT_PIONEER", "NCT_REWIND"]
+    # Every expanded agent was actually queried (not just the class term).
+    assert "liraglutide" in fake.searched and "semaglutide" in fake.searched
+
+
+@respx.mock
 def test_search_studies_omits_filter_when_not_interventional_only():
     route = respx.get(STUDIES_URL).mock(
         return_value=httpx.Response(200, json={"studies": []})

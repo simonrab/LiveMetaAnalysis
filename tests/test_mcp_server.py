@@ -30,6 +30,9 @@ class FixtureClient:
     ) -> list[dict]:
         return [{"nct_id": "NCT01179048", "title": "LEADER"}]
 
+    def search_agent_studies(self, intervention, term=None, page_size=1000, **kwargs):
+        return [{"nct_id": "NCT01179048", "title": "LEADER"}]
+
 
 @pytest.fixture(autouse=True)
 def wired(tmp_path):
@@ -115,6 +118,9 @@ def test_check_updates_returns_only_new_trials():
 
     class _SearchClient(FixtureClient):
         def search_studies(self, query, page_size=1000, interventional_only=False):
+            return [{"nct_id": nct, "title": nct} for nct in GLP1_CVOT_TRIALS]
+
+        def search_agent_studies(self, intervention, term=None, page_size=1000, **kwargs):
             return [{"nct_id": nct, "title": nct} for nct in GLP1_CVOT_TRIALS]
 
     server.set_client(_SearchClient())

@@ -36,24 +36,24 @@ GLP1_MACE_QUESTION = Question(
     trial_ids=GLP1_CVOT_TRIALS,
 )
 
-# The living-layer demo: seed the review as it stood *before* the last CVOT read
-# out, then inject that trial to reach today's published 8-trial answer. AMPLITUDE-O
-# (efpeglenatide, 2021) is the most-recent readout and its fixture already exists.
+# AMPLITUDE-O (efpeglenatide, 2021) — a recent GLP-1 cardiovascular readout,
+# referenced by the living-update tests as the trial to inject.
 HELD_OUT_TRIAL = "NCT03496298"  # AMPLITUDE-O
-GLP1_BASELINE_QUESTION = GLP1_MACE_QUESTION.model_copy(
-    update={"trial_ids": GLP1_CVOT_TRIALS[:7]}
-)
+
+# The product-facing demo question: the *same* PICO but with no trial_ids, so a
+# live run discovers its trials through the real systematic search (Claude expands
+# the GLP-1 class into agents, queries CT.gov, screens) rather than replaying a
+# curated list. GLP1_CVOT_TRIALS remains only as the offline test-fixture set.
+GLP1_MACE_DISCOVER = GLP1_MACE_QUESTION.model_copy(update={"trial_ids": []})
 
 
-def seed_baseline(store, fetch_study):
-    """Persist the 7-trial baseline (v1) so the demo can inject the eighth.
+def discover_demo_trials(pico, *, search_client=None, llm_client=None) -> list[str]:
+    """NCT ids for the demo PICO from a genuine ClinicalTrials.gov search.
 
-    Goes through `run_review_collect` directly rather than the MCP `run_review`
-    tool, whose `_resolve_question` special-cases the glp1-mace id back to the
-    full 8-trial question — which would erase the diff the demo exists to show.
+    Runs the systematic search (Claude expands the class into agents, each queried
+    on CT.gov). Whatever the search returns is what the demo pools — no curated
+    fallback list. If the search finds nothing the pipeline abstains honestly.
     """
-    from .pipeline import run_review_collect  # local: avoid import-time weight
+    from .search import search_trials
 
-    result = run_review_collect(GLP1_BASELINE_QUESTION, fetch_study)
-    store.save_snapshot(result)
-    return result
+    return [c.nct_id for c in search_trials(pico, client=search_client, llm_client=llm_client)]

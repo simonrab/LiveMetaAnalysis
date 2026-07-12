@@ -42,6 +42,9 @@ class _StubSearch:
     def search_studies(self, query, page_size=20, interventional_only=False):
         return [{"nct_id": c.nct_id, "title": c.title} for c in self._candidates]
 
+    def search_agent_studies(self, intervention, term=None, page_size=1000, **kwargs):
+        return [{"nct_id": c.nct_id, "title": c.title} for c in self._candidates]
+
 
 def test_locked_demo_question_returns_demo_without_a_key():
     q = llm.parse_question(demo.GLP1_MACE_QUESTION.text)

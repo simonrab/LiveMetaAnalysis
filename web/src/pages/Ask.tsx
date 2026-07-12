@@ -123,7 +123,9 @@ export function Ask() {
 
           <div className="mt-6 flex flex-wrap items-center gap-4 hairline-t pt-4">
             <span className="font-mono text-[13px] text-ink-muted-light">
-              {parsed.trial_ids.length} candidate trials · pooling
+              {parsed.trial_ids.length > 0
+                ? `${parsed.trial_ids.length} candidate trials · pooling`
+                : "trials discovered from ClinicalTrials.gov on run"}
             </span>
             <label className="sr-only" htmlFor="measure-select">
               Effect measure

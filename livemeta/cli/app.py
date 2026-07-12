@@ -166,20 +166,6 @@ def _cmd_run(args, *, store, fetch_study, parse) -> int:
     return _emit_review(final, args)
 
 
-def _cmd_seed_demo(args, *, store, fetch_study) -> int:
-    from ..core import demo
-
-    existing = store.load_latest(demo.GLP1_MACE_QUESTION.id)
-    result = existing if existing is not None else demo.seed_baseline(store, fetch_study)
-    if not args.quiet:
-        _err(
-            "Baseline already present."
-            if existing is not None
-            else "Seeded 7-trial baseline (version 1)."
-        )
-    return _emit_review(result, args, plot_pool=False)
-
-
 def _cmd_search(args, *, search_client) -> int:
     from ..core import search as search_mod
     from ..core.schema import PICO
@@ -413,8 +399,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--plot", help="Also write a matplotlib forest-plot PNG to this path.")
     p_run.add_argument("--no-save", action="store_true", help="Do not persist a snapshot.")
 
-    sub.add_parser("seed-demo", parents=[parent], help="Seed the 7-trial living-demo baseline.")
-
     p_search = sub.add_parser("search", parents=[parent], help="Search candidate trials for a PICO.")
     p_search.add_argument("--population", default="")
     p_search.add_argument("--intervention", required=True)
@@ -475,12 +459,6 @@ def main(argv=None, *, fetch_study=None, store=None, search_client=None, parse=N
                 store=_resolve_store(args, store),
                 fetch_study=_resolve_fetch(args, fetch_study),
                 parse=_resolve_parse(args, parse),
-            )
-        if args.command == "seed-demo":
-            return _cmd_seed_demo(
-                args,
-                store=_resolve_store(args, store),
-                fetch_study=_resolve_fetch(args, fetch_study),
             )
         if args.command == "search":
             return _cmd_search(args, search_client=_resolve_search(args, search_client))

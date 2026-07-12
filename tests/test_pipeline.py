@@ -65,6 +65,43 @@ def _baseline():
     return run_review_collect(demo.GLP1_MACE_QUESTION, _fetch)
 
 
+def test_pipeline_discovers_trials_when_trial_ids_empty():
+    # A question with no trial_ids is a discovery question: the retrieve stage runs
+    # a real search (injected here) to populate candidates, rather than being
+    # handed a curated list. This is what makes the demo a genuine systematic
+    # search and not a replay of a known answer.
+    from livemeta.core.pipeline import run_review
+
+    question = demo.GLP1_MACE_QUESTION.model_copy(update={"trial_ids": []})
+    discovered = ["NCT01179048", "NCT01720446"]  # LEADER, SUSTAIN-6 (fixtures exist)
+
+    events = list(run_review(question, _fetch, search_fn=lambda _pico: list(discovered)))
+
+    search_events = [e for e in events if e.stage == "search"]
+    assert search_events, "expected a search/discovery stage"
+    assert "2" in search_events[0].message  # reported the candidate count
+
+    done = next(e for e in events if e.stage == "done")
+    result = __import__(
+        "livemeta.core.schema", fromlist=["ReviewResult"]
+    ).ReviewResult.model_validate(done.data)
+    assert set(result.question.trial_ids) == set(discovered)
+    assert result.pool is not None and result.pool.k == 2
+
+
+def test_pipeline_does_not_search_when_trial_ids_present():
+    # A question that already carries trial_ids skips discovery entirely — the
+    # search_fn must never be called (offline/curated runs stay deterministic).
+    from livemeta.core.pipeline import run_review
+
+    def _boom(_pico):
+        raise AssertionError("search_fn must not run when trial_ids are provided")
+
+    events = list(run_review(demo.GLP1_MACE_QUESTION, _fetch, search_fn=_boom))
+    assert not [e for e in events if e.stage == "search"]
+    assert next(e for e in events if e.stage == "done")
+
+
 def test_baseline_pools_all_eight():
     review = _baseline()
     assert review.pool is not None

@@ -15,6 +15,7 @@ in the pooled estimate.
 
 from __future__ import annotations
 
+from . import expand as expand_mod
 from .schema import PICO, TrialCandidate
 from .sources.clinicaltrials import ClinicalTrialsClient
 from .sources.europepmc import EuropePmcClient
@@ -40,32 +41,42 @@ def search_trials(
     client: ClinicalTrialsClient | None = None,
     epmc_client: EuropePmcClient | None = None,
     interventional_only: bool = True,
+    llm_client=None,
 ) -> list[TrialCandidate]:
     """Search both sources for candidate trials matching the PICO.
 
     ClinicalTrials.gov leads (it's the primary, structured source and keeps the
-    pool deterministic); Europe PMC records follow. `interventional_only` (on by
-    default) applies CT.gov's study-type filter at the API — the first, cheapest
-    screen — so the CT.gov candidates are already limited to interventional
-    trials. Europe PMC being unavailable degrades discovery to CT.gov alone
-    rather than failing the search.
+    pool deterministic); Europe PMC records follow. The intervention is first
+    *expanded* — a pharmacologic class ("GLP-1 receptor agonist") into its member
+    agents (`expand`), because CT.gov indexes trials by specific drug, not class —
+    and each agent is searched with `query.intr` and unioned. The outcome distils
+    to a concise `query.term` that prunes without dropping trials.
+    `interventional_only` (on by default) applies CT.gov's study-type filter at the
+    API — the first, cheapest screen. Europe PMC being unavailable degrades
+    discovery to CT.gov alone rather than failing the search.
     """
     ctgov_injected = client is not None
     client = client or ClinicalTrialsClient()
     query = build_query(pico)
+    terms = expand_mod.search_terms(pico.intervention, llm_client=llm_client)
+    outcome_term = expand_mod.outcome_keyword(pico.outcome, llm_client=llm_client)
 
     candidates: list[TrialCandidate] = []
     seen: set[str] = set()
 
-    for h in client.search_studies(
-        query, page_size=max_results, interventional_only=interventional_only
-    ):
-        nct = h.get("nct_id")
-        if nct and nct not in seen:
-            seen.add(nct)
-            candidates.append(
-                TrialCandidate(nct_id=nct, title=h.get("title", ""))
-            )
+    for term in terms:
+        for h in client.search_agent_studies(
+            term,
+            term=outcome_term,
+            page_size=max_results,
+            interventional_only=interventional_only,
+        ):
+            nct = h.get("nct_id")
+            if nct and nct not in seen:
+                seen.add(nct)
+                candidates.append(
+                    TrialCandidate(nct_id=nct, title=h.get("title", ""))
+                )
 
     # Europe PMC uses the injected client; else a live one is constructed only on
     # the fully default path. A caller that injects a specific CT.gov client (a
