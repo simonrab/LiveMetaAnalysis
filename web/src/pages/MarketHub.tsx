@@ -16,14 +16,6 @@ interface Turn {
   error?: boolean;
 }
 
-const STARTERS = [
-  "Map the obesity landscape",
-  "What changed in obesity since 2023",
-  "Compare tirzepatide and semaglutide",
-  "Upcoming readouts in obesity",
-  "Group obesity by mechanism",
-];
-
 export function MarketHub() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
@@ -91,19 +83,6 @@ export function MarketHub() {
           <p className="mt-3 text-[12px] text-ink-muted-light">
             Market intelligence over live ClinicalTrials.gov — a research tool, not medical advice.
           </p>
-        </div>
-
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
-          {STARTERS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => ask(s)}
-              className="rounded-full hairline bg-card-light px-3.5 py-1.5 text-[13px] text-ink-muted-light hover:text-ink-light"
-            >
-              {s}
-            </button>
-          ))}
         </div>
       </div>
     );
