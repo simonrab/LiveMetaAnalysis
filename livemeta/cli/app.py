@@ -89,12 +89,11 @@ def _resolve_parse(args, parse):
         return parse
     from ..core import llm
     from ..core.sources.clinicaltrials import ClinicalTrialsClient
-    from ..core.sources.europepmc import EuropePmcClient
 
     def _parse(text: str):
-        return llm.parse_question(
-            text, search_client=ClinicalTrialsClient(), epmc_client=EuropePmcClient()
-        )
+        # Scoped to ClinicalTrials.gov (no epmc_client): only its structured results
+        # can be pooled, so Europe PMC records would only be screened and dropped.
+        return llm.parse_question(text, search_client=ClinicalTrialsClient())
 
     return _parse
 

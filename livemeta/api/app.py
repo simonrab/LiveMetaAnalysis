@@ -62,7 +62,6 @@ from ..core.schema import (
     TrialCandidate,
 )
 from ..core.sources.clinicaltrials import ClinicalTrialsClient
-from ..core.sources.europepmc import EuropePmcClient
 from ..core.sources.router import SourceRouter
 from ..core.store import SnapshotStore, make_store
 
@@ -94,17 +93,14 @@ def get_store() -> SnapshotStore:
 def get_parse():
     """Injectable free-text -> Question parser (overridden in tests).
 
-    Discovery spans both sources: ClinicalTrials.gov (structured results) and
-    Europe PMC (published literature), so a real question's candidate set is a
-    genuinely systematic, multi-source search rather than a single registry.
+    Discovery is scoped to ClinicalTrials.gov: only its structured arm-level
+    results can be pooled, so pulling in Europe PMC published-paper records would
+    only be screened and dropped at extraction. Passing no epmc_client suppresses
+    that leg (see search.search_trials), matching the run-time discovery path.
     """
 
     def parse(text: str) -> Question:
-        return llm.parse_question(
-            text,
-            search_client=ClinicalTrialsClient(),
-            epmc_client=EuropePmcClient(),
-        )
+        return llm.parse_question(text, search_client=ClinicalTrialsClient())
 
     return parse
 
