@@ -77,7 +77,7 @@ tests/               # pytest + pytest-bdd (Gherkin .feature scenarios)
 
 ## Statistics
 
-The method is standard random-effects meta-analysis, following the Cochrane Handbook for Systematic Reviews of Interventions.
+The method is standard random-effects meta-analysis.
 
 - Two-stage inverse-variance approach; ratio measures (RR, OR, HR) pooled on the log scale.
 - Random-effects by default, with REML for the between-study variance (τ²).
