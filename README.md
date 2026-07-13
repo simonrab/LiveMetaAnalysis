@@ -2,9 +2,9 @@
 
 Strata is a living meta-analysis tool. You ask a clinical question in PICO form, and it finds the trials, extracts the effect data, appraises it, and pools it into one answer: an effect estimate with a confidence interval, a forest plot, heterogeneity measures, and a plain-language summary. Every number links back to the trial and the snippet it came from. When a new trial reads out, Strata re-runs and tells you whether the estimate or the conclusion changed.
 
-The problem it addresses is that a meta-analysis goes stale the day it publishes, and updating one by hand is slow and expensive.
+The problem it addresses is that a meta-analysis can go stale soon after the day it is completed, and updating one by hand is slow and expensive.
 
-Strata also rolls those pooled answers up into a market landscape: a board of assets by indication, stage, and time. Each cell is backed by the same pooled evidence, so the landscape shows who is ahead on the trial data rather than just who is running trials, and it stays current because the evidence underneath it does.
+https://livemeta-backend-production.up.railway.app/
 
 ## How it divides the work
 
