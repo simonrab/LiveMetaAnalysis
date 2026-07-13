@@ -73,7 +73,7 @@ tests/               # pytest + pytest-bdd (Gherkin .feature scenarios)
 | Trial landscape | `map_landscape`, `track_asset`, `ingest_announcement`, `asset_dossier`, `indication_map`, `company_pipeline` |
 | Market intelligence | `landscape_changes`, `milestone_radar`, `moa_landscape`, `compare_assets`, `market_ask` |
 
-`search_trials`, `run_review`, and the market/company tools take an optional `sources` argument (comma list, e.g. `ctgov,pubmed,openfda`) to opt into PubMed discovery or openFDA approvals per call.
+`search_trials`, `run_review' tools take an optional `sources` argument (comma list, e.g. `ctgov,pubmed,openfda`) to opt into PubMed discovery or openFDA approvals per call.
 
 ## Statistics
 
