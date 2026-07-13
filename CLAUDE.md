@@ -3,16 +3,11 @@
 The product ships to users as **Strata** (tagline "Living evidence"). "Living Meta-Analysis Tool" is the internal build name used throughout this document; the two refer to the same thing.
 
 ## One-line pitch
-A living meta-analysis tool that finds the trials, extracts the evidence with full provenance, and pools it into a current, auditable answer to a clinical question that updates itself as new results land. A market-intelligence layer sits on top: the same living evidence, arranged as a competitive landscape of assets, indications, and development stages over time.
+A living meta-analysis tool that finds the trials, extracts the evidence with full provenance, and pools it into a current, auditable answer to a research question that updates itself as new results land. 
 
 ## Outcome
-The user asks a clinical question in PICO form for one outcome. The tool returns a single pooled answer: an effect estimate with confidence interval, a forest plot, heterogeneity measures, and a plain-language summary. Every number is traceable to its source trial and snippet. When a new trial reads out, the tool re-runs and flags whether the estimate or the conclusion changed, so the evidence base never goes stale.
+The user asks a research question in PICO form for one outcome. The tool returns a single pooled answer: an effect estimate with confidence interval, a forest plot, heterogeneity measures, and a plain-language summary. Every number is traceable to its source trial and snippet. When a new trial reads out, the tool re-runs and flags whether the estimate or the conclusion changed, so the evidence base never goes stale.
 
-## ICP
-Medical affairs, HEOR, and clinical development teams who depend on meta-analyses to make evidence-based decisions. Their pain is concrete. A meta-analysis is out of date the moment it publishes, and refreshing it is slow, manual, and expensive. This tool gives them a current answer that can be traced and checked line by line, which is what makes it usable in a regulated setting rather than only interesting.
-
-## Builder track fit
-The Builder track rewards tools life sciences professionals actually need, built with Claude Code. This is a working tool built as an MCP server so Claude drives the full workflow. It also shows judgment about where to use a model and where not to. Claude reads and structures the evidence. Deterministic statistics do the pooling. That division is the trust story a life sciences tool has to earn.
 
 ## Core design principle
 Divide the labour by what each part is reliable at.
@@ -65,7 +60,7 @@ Safety-first tiering. Fail safely on the messy tail rather than pool bad numbers
 - Low-confidence or conflicting extractions surface for quick human review before entering the pool. This is the audit trail, not a workaround.
 
 ## Statistics: Cochrane-aligned method
-Follow the Cochrane Handbook for Systematic Reviews of Interventions, v6.5, Chapter 10 (updated November 2024). Use a validated meta-analysis library, never hand-rolled pooling. If a required method is not available in the library, flag the case rather than substitute a biased default.
+Use a validated meta-analysis library, never hand-rolled pooling. If a required method is not available in the library, flag the case rather than substitute a biased default.
 
 Homogeneity gate before any pooling.
 - Only pool studies judged similar enough in population, intervention, comparator, and outcome to give a clinically meaningful answer. This is a mandatory Cochrane expectation, not optional. Surface clinical diversity and require confirmation rather than silently combining unlike trials.
@@ -126,16 +121,12 @@ Plain code, not the model, runs these before pooling.
 - Percentages must match counts.
 - Anything that fails is flagged for review, not pooled.
 
-## Out of scope for the hackathon
-- Digitising effect sizes from figures such as Kaplan-Meier curves.
-- Reconstructing time-to-event data.
-Detect when a trial only reports outcomes this way and route it to manual review. Be honest about what the tool cannot yet read.
 
 ## The rule that holds it together
 Pool only numbers that can be traced to a source and pass validation. Report what was excluded and why. Refuse a confident pooled estimate when heterogeneity is high or data is thin.
 
 ## Market intelligence layer
-The same living evidence, arranged as a competitive landscape. The connecting idea: a meta-analysis is the evidence contents of one cell in a time-versioned competitive matrix. The competitive layer is the skeleton — asset by indication by development stage, over time; the pool is the flesh — does it work, at what certainty, traceable to source. Both share the same discipline: provenance on every claim, the living-update trigger, and abstention rather than invention (conflicts are flagged, not silently resolved). Code lives in `livemeta/core/ci/`; the internal package keeps the `ci` name while the user-facing surface is called Market Intelligence.
+ The connecting idea: a meta-analysis is the evidence contents of one cell in a time-versioned competitive matrix. The competitive layer is the skeleton — asset by indication by development stage, over time; the pool is the flesh — does it work, at what certainty, traceable to source. Both share the same discipline: provenance on every claim, the living-update trigger, and abstention rather than invention (conflicts are flagged, not silently resolved). Code lives in `livemeta/core/ci/`.
 
 The landscape is assembled deterministically from ClinicalTrials.gov modules the tool already fetches: most-advanced sourced phase wins, and a source reporting a lower stage at or after another's higher claim is marked a conflict rather than overwritten. An as-of date filter lets the whole matrix time-travel to an earlier state. Each cell joins to its living pooled evidence through a measure-aware badge (benefit proven, evidence pending, or not enough data yet), with the underlying HR, CI, and GRADE kept for hover and drill-in.
 
@@ -157,10 +148,6 @@ Surfaced with the same parity discipline as the core: REST endpoints under `/api
 - `httpx` or `requests` for the ClinicalTrials.gov, Europe PMC, and openFDA APIs.
 - A fully functioning web UI platform for the front end, built against the reference designs in `stitch_livemeta_precision_evidence_system/`.
 
-## Demo plan
-- Locked question: GLP-1 receptor agonists versus placebo for 3-point MACE, a time-to-event outcome pooled on the log hazard-ratio scale. The answer is well established, so judges can sanity-check the output against known truth: the live run reproduces the published estimate, HR 0.86 (0.79–0.94).
-- Scope to that one question and outcome, over eight cardiovascular outcome trials (ELIXA, LEADER, SUSTAIN-6, EXSCEL, HARMONY, REWIND, PIONEER-6, AMPLITUDE-O) with structured arm-level results from ClinicalTrials.gov v2.
-- Memorable moment: inject an additional trial live and watch the pooled estimate and conclusion update. On the market-intelligence layer, move the as-of time slider and watch the competitive landscape recede to an earlier state.
 
 ## Main risks and mitigations
 - Extraction errors: prefer structured results over free text, require provenance, validate before pooling.
